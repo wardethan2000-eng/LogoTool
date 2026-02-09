@@ -1,0 +1,9 @@
+Pillow>=10.0
+numpy>=1.24
+scikit-learn>=1.3
+opencv-python-headless>=4.8
+svgwrite>=1.4
+webcolors>=1.13
+click>=8.1
+scipy>=1.10
+pytest>=7.0
