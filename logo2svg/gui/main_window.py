@@ -1,22 +1,22 @@
-"""Main application window for the logo2svg GUI.
+"""Main application window for the QuickLayer GUI.
 
 Layout
 ------
 ┌─ Menu bar ───────────────────────────────────────────────┐
 ├─ Header bar ─────────────────────────────────────────────┤
-│  logo2svg   │ [Open] [Export SVGs] │ Colours [Auto] │ ⚙ │
-├───────────────────────────┬──────────────────────────────┤
-│                           │  SOURCE IMAGE                │
-│                           │  (large view of original)    │
-│       PREVIEW AREA        │                              │
-│  (composite with layers)  ├──────────────────────────────┤
-│                           │  LAYERS            [3]       │
-│  (drag and drop to open)  │  ┌──────────────────┐       │
-│                           │  │ ☐ ■ Red  #FF0000 │       │
-│                           │  │ ☐ ■ Blue #0000FF │       │
-│                           │  └──────────────────┘       │
-│                           │  [Merge Selected]            │
-├───────────────────────────┴──────────────────────────────┤
+│  QuickLayer │ [Open] [Export SVGs] │ Colors [Auto]  │ ⚙ │
+├──────────────────────────┬───────────────────────────────┤
+│  SOURCE IMAGE            │                               │
+│  (large view of original)│                               │
+│                          │       PREVIEW AREA            │
+├──────────────────────────┤  (composite with layers)      │
+│  LAYERS            [3]   │                               │
+│  ┌──────────────────┐   │  (drag and drop to open)      │
+│  │ ☑ ■ Layer 1      │   │                               │
+│  │ ☑ ■ Layer 2      │   │                               │
+│  └──────────────────┘   │                               │
+│  [Merge Selected]        │                               │
+├──────────────────────────┴───────────────────────────────┤
 │  Ready                                         ████████  │
 └──────────────────────────────────────────────────────────┘
 """
@@ -60,7 +60,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("logo2svg")
+        self.setWindowTitle("QuickLayer")
         self.resize(1280, 800)
         self.setAcceptDrops(True)
 
@@ -122,7 +122,7 @@ class MainWindow(QMainWindow):
         hbar.setSpacing(8)
 
         # App title
-        title = QLabel("logo2svg")
+        title = QLabel("QuickLayer")
         title.setStyleSheet(
             f"font-size: 16px; font-weight: 700; color: {TEXT}; "
             "margin-right: 12px;"
@@ -152,8 +152,8 @@ class MainWindow(QMainWindow):
         hbar.addWidget(self._vsep())
         hbar.addSpacing(8)
 
-        # Colours control
-        clr_label = QLabel("Colours")
+        # Colors control
+        clr_label = QLabel("Colors")
         clr_label.setStyleSheet(f"color: {TEXT_SEC}; font-size: 13px;")
         hbar.addWidget(clr_label)
 
@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         self._color_spin.setSpecialValueText("Auto")
         self._color_spin.setValue(0)
         self._color_spin.setToolTip(
-            "Number of colours for quantization (0 = auto-detect)"
+            "Number of colors for quantization (0 = auto-detect)"
         )
         self._color_spin.setFixedWidth(80)
         self._color_spin.setFixedHeight(32)
@@ -192,28 +192,24 @@ class MainWindow(QMainWindow):
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_splitter.setHandleWidth(1)
 
-        # Left: preview panel (main focus, stretches)
-        self._preview = PreviewPanel()
-        main_splitter.addWidget(self._preview)
+        # Left: sidebar with source image (top) + layers (bottom)
+        left_sidebar = QFrame()
+        left_sidebar.setObjectName("leftSidebar")
+        left_sidebar.setMinimumWidth(380)
+        left_sidebar.setMaximumWidth(600)
 
-        # Right: sidebar with source image (top) + layers (bottom)
-        right_sidebar = QFrame()
-        right_sidebar.setObjectName("rightSidebar")
-        right_sidebar.setMinimumWidth(380)
-        right_sidebar.setMaximumWidth(600)
+        left_outer = QVBoxLayout(left_sidebar)
+        left_outer.setContentsMargins(0, 0, 0, 0)
+        left_outer.setSpacing(0)
 
-        right_outer = QVBoxLayout(right_sidebar)
-        right_outer.setContentsMargins(0, 0, 0, 0)
-        right_outer.setSpacing(0)
+        left_splitter = QSplitter(Qt.Orientation.Vertical)
+        left_splitter.setHandleWidth(1)
 
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
-        right_splitter.setHandleWidth(1)
-
-        # Source image viewer (top of right side, large)
+        # Source image viewer (top of left side, large)
         self._source_panel = SourcePanel()
-        right_splitter.addWidget(self._source_panel)
+        left_splitter.addWidget(self._source_panel)
 
-        # Layer panel (bottom of right side)
+        # Layer panel (bottom of left side)
         self._layer_panel = LayerPanel()
         self._layer_panel.visibility_toggled.connect(
             self._on_visibility_toggled
@@ -223,20 +219,24 @@ class MainWindow(QMainWindow):
         )
         self._layer_panel.delete_requested.connect(self._on_delete_layer)
         self._layer_panel.merge_requested.connect(self._on_merge_layers)
-        right_splitter.addWidget(self._layer_panel)
+        left_splitter.addWidget(self._layer_panel)
 
         # Source image gets more space than layers
-        right_splitter.setStretchFactor(0, 3)
-        right_splitter.setStretchFactor(1, 2)
-        right_splitter.setSizes([350, 250])
+        left_splitter.setStretchFactor(0, 3)
+        left_splitter.setStretchFactor(1, 2)
+        left_splitter.setSizes([350, 250])
 
-        right_outer.addWidget(right_splitter)
-        main_splitter.addWidget(right_sidebar)
+        left_outer.addWidget(left_splitter)
+        main_splitter.addWidget(left_sidebar)
 
-        # Stretch factors: preview stretches, sidebar stays
-        main_splitter.setStretchFactor(0, 1)
-        main_splitter.setStretchFactor(1, 0)
-        main_splitter.setSizes([700, 560])
+        # Right: preview panel (main focus, stretches)
+        self._preview = PreviewPanel()
+        main_splitter.addWidget(self._preview)
+
+        # Stretch factors: sidebar stays, preview stretches
+        main_splitter.setStretchFactor(0, 0)
+        main_splitter.setStretchFactor(1, 1)
+        main_splitter.setSizes([560, 700])
 
         root.addWidget(main_splitter, stretch=1)
 
@@ -386,9 +386,9 @@ class MainWindow(QMainWindow):
         if index >= len(layers):
             return
         current = QColor(layers[index].hex_color)
-        colour = QColorDialog.getColor(current, self, "Pick Layer Colour")
-        if colour.isValid():
-            self._session.change_color(index, colour.name())
+        color = QColorDialog.getColor(current, self, "Pick Layer Color")
+        if color.isValid():
+            self._session.change_color(index, color.name())
             self._refresh_layers()
             self._refresh_preview()
 

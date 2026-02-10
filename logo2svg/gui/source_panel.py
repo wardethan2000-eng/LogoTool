@@ -1,4 +1,4 @@
-"""Right-side source-image viewer.
+"""Left-side source-image viewer.
 
 Displays the original loaded image at a large size so it is clear what
 is being processed.  File metadata is shown in a compact header row.
@@ -17,7 +17,7 @@ from .style import BG, BORDER, SURFACE, TEXT_MUTED, TEXT_SEC
 
 
 class SourcePanel(QWidget):
-    """Large source-image viewer for the right panel."""
+    """Large source-image viewer for the left panel."""
 
     def __init__(self, parent=None):
         super().__init__(parent)

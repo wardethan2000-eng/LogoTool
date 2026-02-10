@@ -1,4 +1,4 @@
-"""Application entry-point for the logo2svg GUI.
+"""Application entry-point for the QuickLayer GUI.
 
 Sets up the Fusion theme with a modern light palette, applies the
 central QSS stylesheet, and launches the main window.
@@ -7,9 +7,10 @@ central QSS stylesheet, and launches the main window.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPalette
+from PyQt6.QtGui import QColor, QIcon, QPalette
 from PyQt6.QtWidgets import QApplication
 
 from .main_window import MainWindow
@@ -63,14 +64,28 @@ def _apply_light_palette(app: QApplication) -> None:
 
 
 def run_gui(file_path: str | None = None) -> int:
-    """Launch the logo2svg GUI.  Optionally open *file_path* immediately."""
+    """Launch the QuickLayer GUI.  Optionally open *file_path* immediately."""
+    # Tell Windows this is its own app so the taskbar icon works
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "quicklayer.gui.1"
+        )
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
-    app.setApplicationName("logo2svg")
-    app.setOrganizationName("logo2svg")
+    app.setApplicationName("QuickLayer")
+    app.setOrganizationName("QuickLayer")
     app.setStyle("Fusion")
 
     _apply_light_palette(app)
     app.setStyleSheet(STYLESHEET)
+
+    # Set application icon (taskbar / title-bar)
+    icon_path = Path(__file__).resolve().parent.parent / "icons" / "quicklayer.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     window = MainWindow()
     window.show()
@@ -82,7 +97,7 @@ def run_gui(file_path: str | None = None) -> int:
 
 
 def run_gui_cli() -> None:
-    """Console-script entry point for ``logo2svg-gui``.
+    """Console-script entry point for ``quicklayer-gui``.
 
     Parses an optional positional file-path argument from *sys.argv*
     and delegates to :func:`run_gui`.
@@ -90,8 +105,8 @@ def run_gui_cli() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="logo2svg-gui",
-        description="Launch the logo2svg graphical interface.",
+        prog="quicklayer-gui",
+        description="Launch the QuickLayer graphical interface.",
     )
     parser.add_argument(
         "file",

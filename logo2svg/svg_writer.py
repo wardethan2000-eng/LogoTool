@@ -19,25 +19,29 @@ def write_svg_files(
 ) -> list[Path]:
     """Write one SVG per color layer, optionally a combined SVG.
 
+    Files are written into a subfolder named *base_name* inside
+    *output_dir*.  Individual layers are named ``layer_1.svg``,
+    ``layer_2.svg``, etc.  The combined file is ``combined.svg``.
+
     Args:
-        base_name: Base filename (without extension) for output files.
+        base_name: Base filename (without extension) — used as subfolder name.
         layers: List of layer dicts with 'hex_color', 'color_name', 'svg_paths'.
         image_size: (height, width) of the source image.
-        output_dir: Directory to write SVG files to.
+        output_dir: Parent directory; a subfolder *base_name* is created inside.
         combined: Whether to also write a combined SVG.
         scale: Multiplier applied to viewBox dimensions and path coordinates.
 
     Returns:
         List of output file paths created.
     """
-    output_dir.mkdir(parents=True, exist_ok=True)
+    sub_dir = output_dir / base_name
+    sub_dir.mkdir(parents=True, exist_ok=True)
     height, width = image_size
     output_files = []
 
-    for layer in layers:
-        hex_clean = layer["hex_color"].lstrip("#")
-        filename = f"{base_name}_color_{hex_clean}.svg"
-        filepath = output_dir / filename
+    for i, layer in enumerate(layers, start=1):
+        filename = f"layer_{i}.svg"
+        filepath = sub_dir / filename
 
         _write_single_color_svg(
             filepath, layer["svg_paths"], layer["hex_color"], width, height,
@@ -46,7 +50,7 @@ def write_svg_files(
         output_files.append(filepath)
 
     if combined:
-        combined_path = output_dir / f"{base_name}_combined.svg"
+        combined_path = sub_dir / "combined.svg"
         _write_combined_svg(combined_path, layers, width, height, scale=scale)
         output_files.append(combined_path)
 
@@ -113,9 +117,8 @@ def _write_combined_svg(
     )
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
 
-    for layer in layers:
-        hex_clean = layer["hex_color"].lstrip("#")
-        group = dwg.g(id=f"color_{hex_clean}_{layer['color_name']}")
+    for i, layer in enumerate(layers, start=1):
+        group = dwg.g(id=f"layer_{i}")
         for d in layer["svg_paths"]:
             group.add(
                 dwg.path(d=_scale_path(d, scale), fill=layer["hex_color"], fill_rule="evenodd", stroke="none")
@@ -163,6 +166,7 @@ def write_preview(
         mask_colored[mask_bool] = [b, g, r]  # BGR
         canvas[:, offset : offset + panel_width] = mask_colored
 
-    preview_path = output_dir / f"{base_name}_preview.png"
+    preview_path = output_dir / base_name / f"preview.png"
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(preview_path), canvas)
     return preview_path

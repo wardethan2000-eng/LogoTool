@@ -1,7 +1,7 @@
-"""Right-sidebar colour-layer list with modern card-style rows.
+"""Left-sidebar color-layer list with modern card-style rows.
 
-Each row is a styled QFrame card containing a colour swatch, colour
-name, hex value, pixel count, visibility toggle, and delete button.
+Each row is a styled QFrame card containing a visibility checkbox,
+color swatch, layer label, hex value, pixel count, and delete button.
 The bottom of the panel has a Merge Selected button.
 """
 
@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
 
 from ..session import LayerInfo
 from .style import (
-    ACCENT,
     BORDER,
     BORDER_LIGHT,
     CARD,
@@ -35,7 +34,7 @@ from .style import (
 
 
 def _swatch_pixmap(hex_color: str, size: int = 20) -> QPixmap:
-    """Create a rounded square colour swatch."""
+    """Create a rounded square color swatch."""
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pm)
@@ -70,31 +69,32 @@ class LayerRow(QFrame):
         layout.setContentsMargins(10, 6, 6, 6)
         layout.setSpacing(8)
 
-        # Selection checkbox (for merge)
+        # Visibility checkbox (checked = visible in preview)
         self.select_cb = QCheckBox()
-        self.select_cb.setToolTip("Select for merge")
-        self.select_cb.stateChanged.connect(lambda: self.selection_changed.emit())
+        self.select_cb.setChecked(info.visible)  # set before connecting signal
+        self.select_cb.setToolTip("Show/hide this layer in preview")
+        self.select_cb.stateChanged.connect(self._on_checkbox_changed)
         layout.addWidget(self.select_cb)
 
-        # Colour swatch — click to change colour
+        # Color swatch — click to change color
         self.swatch_label = QLabel()
         self.swatch_label.setPixmap(_swatch_pixmap(info.hex_color, 22))
         self.swatch_label.setFixedSize(26, 26)
         self.swatch_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.swatch_label.setToolTip("Click to change colour")
+        self.swatch_label.setToolTip("Click to change color")
         self.swatch_label.mousePressEvent = (
             lambda _e: self.color_change_requested.emit(self._index)
         )
         layout.addWidget(self.swatch_label)
 
-        # Colour info column: name + hex on top, pixel count below
+        # Layer info column: name + hex on top, pixel count below
         info_col = QVBoxLayout()
         info_col.setSpacing(0)
         info_col.setContentsMargins(0, 0, 0, 0)
 
         name_row = QHBoxLayout()
         name_row.setSpacing(6)
-        self.name_label = QLabel(info.color_name)
+        self.name_label = QLabel(f"Layer {info.index + 1}")
         self.name_label.setStyleSheet(
             f"font-size: 13px; font-weight: 500; color: {TEXT};"
         )
@@ -114,16 +114,6 @@ class LayerRow(QFrame):
         info_col.addWidget(self.count_label)
 
         layout.addLayout(info_col, stretch=1)
-
-        # Visibility toggle
-        self.eye_btn = QPushButton("\u25cf")  # ● filled circle
-        self.eye_btn.setProperty("cssClass", "icon")
-        self.eye_btn.setCheckable(True)
-        self.eye_btn.setChecked(info.visible)
-        self.eye_btn.setToolTip("Toggle visibility")
-        self._update_eye_icon(info.visible)
-        self.eye_btn.toggled.connect(self._on_eye_toggled)
-        layout.addWidget(self.eye_btn)
 
         # Delete button
         del_btn = QPushButton("\u2715")  # ✕
@@ -152,38 +142,22 @@ class LayerRow(QFrame):
         self._hex = info.hex_color
         self.swatch_label.setPixmap(_swatch_pixmap(info.hex_color, 22))
         self.hex_label.setText(info.hex_color)
-        self.name_label.setText(info.color_name)
+        self.name_label.setText(f"Layer {info.index + 1}")
         self.count_label.setText(f"{info.pixel_count:,} px")
-        self.eye_btn.setChecked(info.visible)
-        self._update_eye_icon(info.visible)
+        self.select_cb.blockSignals(True)
+        self.select_cb.setChecked(info.visible)
+        self.select_cb.blockSignals(False)
 
     # -- internals --------------------------------------------------------
 
-    def _on_eye_toggled(self, checked: bool) -> None:
-        self._update_eye_icon(checked)
+    def _on_checkbox_changed(self, state) -> None:
+        checked = bool(state)
         self.visibility_changed.emit(self._index, checked)
-
-    def _update_eye_icon(self, visible: bool) -> None:
-        if visible:
-            self.eye_btn.setText("\u25cf")  # ● filled
-            self.eye_btn.setStyleSheet(
-                f"color: {ACCENT}; font-size: 14px; "
-                "background: transparent; border: 1px solid transparent; "
-                "border-radius: 4px; min-width: 28px; max-width: 28px; "
-                "min-height: 28px; max-height: 28px; padding: 2px;"
-            )
-        else:
-            self.eye_btn.setText("\u25cb")  # ○ empty
-            self.eye_btn.setStyleSheet(
-                f"color: {TEXT_MUTED}; font-size: 14px; "
-                "background: transparent; border: 1px solid transparent; "
-                "border-radius: 4px; min-width: 28px; max-width: 28px; "
-                "min-height: 28px; max-height: 28px; padding: 2px;"
-            )
+        self.selection_changed.emit()
 
 
 class LayerPanel(QWidget):
-    """Scrollable colour-layer list with merge button."""
+    """Scrollable color-layer list with merge button."""
 
     # Signals consumed by the main window
     visibility_toggled = pyqtSignal(int, bool)

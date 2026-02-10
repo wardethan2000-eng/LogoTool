@@ -295,24 +295,6 @@ QSpinBox::down-button, QDoubleSpinBox::down-button {{
     border-bottom-right-radius: {RADIUS};
 }}
 
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-bottom: 5px solid {TEXT_SEC};
-    width: 0px;
-    height: 0px;
-}}
-
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-    image: none;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {TEXT_SEC};
-    width: 0px;
-    height: 0px;
-}}
-
 /* ================================================================
    LINE EDITS
    ================================================================ */
@@ -476,12 +458,12 @@ QLabel#sectionHeader {{
 }}
 
 /* ================================================================
-   APP-SPECIFIC: right sidebar
+   APP-SPECIFIC: left sidebar
    ================================================================ */
 
-QFrame#rightSidebar {{
+QFrame#leftSidebar {{
     background-color: {SURFACE};
-    border-left: 1px solid {BORDER};
+    border-right: 1px solid {BORDER};
 }}
 
 /* ================================================================
