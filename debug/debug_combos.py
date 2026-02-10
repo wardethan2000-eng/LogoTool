@@ -1,6 +1,15 @@
-"""Test smooth + approxPolyDP combinations."""
-import numpy as np, cv2
+"""Test smooth + approxPolyDP combinations.
+
+NOTE: This is a one-time diagnostic script from the Potrace migration.
+It requires a test image (e.g. white_sox.png) placed in the project root
+directory.  It is not part of the automated test suite.
+"""
+import sys
 from pathlib import Path
+# Ensure the project root is on sys.path so logo2svg is importable
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import numpy as np, cv2
 from scipy.ndimage import gaussian_filter1d
 from logo2svg.image_loader import load_image
 from logo2svg.quantizer import quantize_colors
@@ -9,7 +18,7 @@ from logo2svg.tracer import find_contours
 from logo2svg.session import Session
 from debug_utils import smooth_contour as _smooth_contour
 
-image, fg_mask = load_image(Path("white_sox.png"))
+image, fg_mask = load_image(Path(__file__).resolve().parent.parent / "white_sox.png")
 h, w = image.shape[:2]
 fg_eroded = Session._erode_mask(fg_mask)
 labels, centers = quantize_colors(image, fg_eroded)

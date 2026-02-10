@@ -168,6 +168,61 @@ class TestBatchMode:
 # Error messages
 # ---------------------------------------------------------------------------
 
+class TestTargetColors:
+    """Tests for --target-colors validation and usage."""
+
+    def test_invalid_target_color_format(self, tmp_path):
+        """Passing an invalid hex color should produce a clean error, not a traceback."""
+        logo = tmp_path / "logo.png"
+        _create_simple_logo(logo)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            str(logo), "--target-colors", "#GGGGGG",
+        ])
+        assert result.exit_code != 0
+        assert "invalid hex color" in result.output.lower() or "Error" in result.output
+        # Should NOT contain a Python traceback
+        assert "Traceback" not in (result.output or "")
+
+    def test_valid_target_colors_run(self, tmp_path):
+        """Passing valid --target-colors with a two-color logo should succeed."""
+        logo = tmp_path / "logo.png"
+        _create_two_color_logo(logo)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            str(logo), "--target-colors", "#FF0000,#0000FF",
+            "--output-dir", str(tmp_path),
+        ])
+        assert result.exit_code == 0
+        svg_files = list(tmp_path.glob("*.svg"))
+        assert len(svg_files) >= 1
+
+
+# ---------------------------------------------------------------------------
+# --turdsize flag
+# ---------------------------------------------------------------------------
+
+class TestTurdsizeFlag:
+    """Tests for the --turdsize CLI option."""
+
+    def test_turdsize_flag_accepted(self, tmp_path):
+        """The CLI should accept --turdsize without error."""
+        logo = tmp_path / "logo.png"
+        _create_simple_logo(logo)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            str(logo), "--colors", "1", "--output-dir", str(tmp_path),
+            "--turdsize", "5",
+        ])
+        assert result.exit_code == 0
+        svg_files = list(tmp_path.glob("*.svg"))
+        assert len(svg_files) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Error messages
+# ---------------------------------------------------------------------------
+
 class TestErrorMessages:
     """CLI should give helpful error messages."""
 

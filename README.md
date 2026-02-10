@@ -32,6 +32,8 @@ After installation the `logo2svg` command is available on your PATH.
 - **PNG** (recommended) — supports transparency for clean background removal.
 - **JPEG** — works but compression artefacts may create spurious color clusters. A warning is printed when JPEG input is detected.
 
+> **Note:** `.webp` and `.bmp` files may work (Pillow can open them) but are untested. Convert to PNG for best results.
+
 ## CLI Usage
 
 ```
@@ -83,7 +85,39 @@ logo2svg logo.png --quiet
 | `--verbose` | Print detailed per-stage diagnostics. |
 | `--quiet` | Suppress all output except errors. |
 | `--batch` | Treat `INPUT_PATH` as a directory and process all PNG/JPEG files in it. |
+| `--turdsize N` | Potrace speckle suppression: discard components up to this many pixels. Default: `2`. |
 | `--min-area N` | Minimum contour area in pixels. Smaller regions are filtered as noise. Default: `100`. |
+
+## GUI
+
+logo2svg includes an optional graphical interface built with PyQt6.
+
+```bash
+# Launch via the CLI flag
+logo2svg logo.png --gui
+
+# Or use the dedicated entry point (no image argument required)
+logo2svg-gui
+```
+
+The GUI provides an interactive preview of the pipeline stages, lets you adjust
+color count, Potrace parameters, and target colors, and writes SVGs on demand.
+Install the GUI extra to get PyQt6:
+
+```bash
+pip install -e ".[gui]"
+```
+
+## Legacy Directory
+
+The `legacy/` directory contains modules that were replaced during the migration
+from OpenCV contour tracing to Potrace:
+
+- **`bezier_fit.py`** — Catmull-Rom spline → cubic Bézier fitting (replaced by Potrace).
+- **`test_bezier_fit.py`** — Tests for the above.
+- **`quantizer_hue.py`** — Hue-based color quantizer (never shipped; CIELAB K-means proved more robust).
+
+See [`legacy/README.md`](legacy/README.md) for details.
 
 ## How It Works
 

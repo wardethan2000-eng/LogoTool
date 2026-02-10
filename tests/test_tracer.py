@@ -123,6 +123,22 @@ def test_legacy_trace_to_svg_paths():
     assert "Z" in path
 
 
+def test_legacy_trace_to_svg_paths_with_simplify():
+    """Legacy trace_to_svg_paths accepts a simplify parameter without crashing.
+
+    The *simplify* parameter is accepted for backward compatibility but is
+    ignored (Potrace handles simplification internally).  This test documents
+    that calling with extra positional args doesn't raise.
+    """
+    mask = _make_rectangle_mask(100, 100, 20, 20, 80, 80)
+    contours, hierarchy = find_contours(mask)
+    # Call with explicit simplify= kwarg — should not crash
+    paths = trace_to_svg_paths(contours, hierarchy, tolerance=2.0, simplify=0.5)
+    assert len(paths) >= 1
+    assert paths[0].startswith("M")
+    assert "Z" in paths[0]
+
+
 def test_find_contours_with_smooth():
     """Smoothing should still produce valid contours."""
     mask = _make_ring_mask(200, 200, 100, 100, 80, 40)

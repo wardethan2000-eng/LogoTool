@@ -1,13 +1,21 @@
-"""Measure pixel-level impact of each pipeline stage."""
-import numpy as np, cv2
+"""Measure pixel-level impact of each pipeline stage.
+
+NOTE: This is a one-time diagnostic script from the Potrace migration.
+It requires a test image (e.g. white_sox.png) placed in the project root
+directory.  It is not part of the automated test suite.
+"""
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import numpy as np, cv2
 from logo2svg.image_loader import load_image
 from logo2svg.quantizer import quantize_colors
 from logo2svg.layer_separator import separate_layers
 from logo2svg.tracer import find_contours, trace_to_svg_paths
 from logo2svg.session import Session
 
-image, fg_mask = load_image(Path("white_sox.png"))
+image, fg_mask = load_image(Path(__file__).resolve().parent.parent / "white_sox.png")
 h, w = image.shape[:2]
 fg_eroded = Session._erode_mask(fg_mask)
 labels, centers = quantize_colors(image, fg_eroded)
@@ -62,7 +70,7 @@ for li, layer in enumerate(layers):
 # === 3. Bezier curve vs polygon fill (legacy — requires legacy/bezier_fit.py) ===
 print("\n=== Bezier curves vs simplified polygon: pixel difference ===")
 import sys, importlib.util
-_bf_path = str(Path(__file__).parent / "legacy" / "bezier_fit.py")
+_bf_path = str(Path(__file__).resolve().parent.parent / "legacy" / "bezier_fit.py")
 _bf_spec = importlib.util.spec_from_file_location("bezier_fit", _bf_path)
 bezier_fit = importlib.util.module_from_spec(_bf_spec)
 _bf_spec.loader.exec_module(bezier_fit)

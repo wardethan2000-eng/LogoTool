@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-"""Debug script: saves intermediate pipeline images to diagnose shape fidelity."""
+"""Debug script: saves intermediate pipeline images to diagnose shape fidelity.
 
+NOTE: This is a one-time diagnostic script from the Potrace migration.
+It requires a test image (e.g. white_sox.png) placed in the project root
+directory.  It is not part of the automated test suite.
+"""
+
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import cv2
 import numpy as np
 from logo2svg.image_loader import load_image
@@ -54,8 +62,8 @@ def _svg_path_to_polygon(path_d: str, num_samples: int = 20) -> np.ndarray | Non
     return np.array(points, dtype=np.float64)
 
 
-INPUT = Path("white_sox.png")
-OUT = Path("debug_output")
+INPUT = Path(__file__).resolve().parent.parent / "white_sox.png"
+OUT = Path(__file__).resolve().parent.parent / "debug_output"
 OUT.mkdir(exist_ok=True)
 
 # ── Stage 1: Load image ────────────────────────────────────────────

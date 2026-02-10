@@ -1,5 +1,8 @@
 """Shared stubs and helpers for debug scripts.
 
+NOTE: These are one-time diagnostic utilities from the Potrace migration.
+They are not part of the automated test suite.
+
 The original pipeline used OpenCV contour smoothing and epsilon-based
 simplification (approxPolyDP).  Those functions were removed from
 ``logo2svg.tracer`` when Potrace replaced the OpenCV tracing back-end.
