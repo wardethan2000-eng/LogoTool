@@ -5,6 +5,8 @@ opencv-python-headless>=4.8
 svgwrite>=1.4
 webcolors>=1.13
 click>=8.1
-scipy>=1.10
 pytest>=7.0
+# The PyPI package is "potracer" but it imports as "potrace"
 potracer>=0.1
+# GUI (optional — only needed for the graphical interface)
+PyQt6>=6.5

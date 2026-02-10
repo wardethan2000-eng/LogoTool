@@ -50,6 +50,35 @@ from .pipeline import PipelineConfig, process_batch, process_single
     help="Potrace curve optimisation tolerance. "
          "Lower = more faithful. Higher = fewer bezier segments. Default: 0.2.",
 )
+@click.option(
+    "--verbose", is_flag=True, default=False,
+    help="Print detailed per-stage diagnostics.",
+)
+@click.option(
+    "--quiet", is_flag=True, default=False,
+    help="Suppress all output except errors.",
+)
+@click.option(
+    "--target-colors", type=str, default=None,
+    help='Comma-separated hex colors (e.g. "#FF0000,#FFFFFF,#000000"). '
+         "Assign each pixel to the nearest target color instead of auto-detecting.",
+)
+@click.option(
+    "--scale", type=float, default=1.0,
+    help="Scale SVG viewBox and path coordinates by this multiplier. Default: 1.0.",
+)
+@click.option(
+    "--width", type=float, default=None,
+    help="Set target SVG width in mm. Overrides --scale.",
+)
+@click.option(
+    "--report", is_flag=True, default=False,
+    help="Print detected colors with pixel counts, then exit without writing SVGs.",
+)
+@click.option(
+    "--gui", is_flag=True, default=False,
+    help="Launch the graphical interface instead of processing on the command line.",
+)
 def main(
     input_path: str,
     colors: int | None,
@@ -61,6 +90,13 @@ def main(
     batch: bool,
     alphamax: float,
     opttolerance: float,
+    verbose: bool,
+    quiet: bool,
+    target_colors: str | None,
+    scale: float,
+    width: float | None,
+    report: bool,
+    gui: bool,
 ) -> None:
     """Convert a PNG or JPEG logo into color-separated SVG files for 3D printing.
 
@@ -70,19 +106,44 @@ def main(
 
     \b
     Examples:
-      python logo2svg.py white_sox_logo.png
-      python logo2svg.py cubs_logo.png --colors 3 --output-dir ./cubs_svgs
-      python logo2svg.py logo.png --bg-color "#FFFFFF" --preview --combined
-      python logo2svg.py ./logos/ --batch
+      logo2svg white_sox_logo.png
+      logo2svg cubs_logo.png --colors 3 --output-dir ./cubs_svgs
+      logo2svg logo.png --bg-color "#FFFFFF" --preview --combined
+      logo2svg logo.png --target-colors "#FF0000,#FFFFFF,#000000"
+      logo2svg ./logos/ --batch
+      logo2svg logo.png --report
     """
     path = Path(input_path)
+
+    # GUI mode — launch graphical interface
+    if gui:
+        from .gui import run_gui
+        file_arg = str(path) if path.is_file() else None
+        raise SystemExit(run_gui(file_arg))
 
     # Validate inputs
     if colors is not None and colors < 1:
         click.echo("Error: --colors must be at least 1.", err=True)
         sys.exit(1)
 
+    if verbose and quiet:
+        click.echo("Error: --verbose and --quiet are mutually exclusive.", err=True)
+        sys.exit(1)
 
+    # Parse target colors
+    parsed_target_colors: list[str] | None = None
+    if target_colors is not None:
+        parsed_target_colors = [c.strip() for c in target_colors.split(",") if c.strip()]
+        if not parsed_target_colors:
+            click.echo("Error: --target-colors requires at least one hex color.", err=True)
+            sys.exit(1)
+
+    # Determine verbosity level
+    verbosity = 1
+    if quiet:
+        verbosity = 0
+    elif verbose:
+        verbosity = 2
 
     # Resolve output directory
     if output_dir is not None:
@@ -101,6 +162,11 @@ def main(
         preview=preview,
         alphamax=alphamax,
         opttolerance=opttolerance,
+        verbosity=verbosity,
+        target_colors=parsed_target_colors,
+        scale=scale,
+        width=width,
+        report=report,
     )
 
     try:

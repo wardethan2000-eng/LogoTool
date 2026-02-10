@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "logo2svg"
+version = "0.1.0"
+description = "Convert PNG/JPEG logos into color-separated SVG files for multi-color 3D printing"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=10.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "opencv-python-headless>=4.8",
+    "svgwrite>=1.4",
+    "webcolors>=1.13",
+    "click>=8.1",
+    # The PyPI package is "potracer" but it imports as "potrace"
+    "potracer>=0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+gui = [
+    "PyQt6>=6.5",
+]
+
+[project.scripts]
+logo2svg = "logo2svg.cli:main"
+logo2svg-gui = "logo2svg.gui.app:run_gui"
