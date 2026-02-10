@@ -305,15 +305,15 @@ QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover {{
 }}
 
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-bottom: 5px solid {TEXT_SEC};
-    width: 0px;
-    height: 0px;
+    image: url(__ICONS_DIR__/arrow-up.svg);
+    width: 10px;
+    height: 6px;
 }}
 
 QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled {{
-    border-bottom-color: {BORDER};
+    image: url(__ICONS_DIR__/arrow-up-disabled.svg);
+    width: 10px;
+    height: 6px;
 }}
 
 QSpinBox::down-button, QDoubleSpinBox::down-button {{
@@ -330,15 +330,15 @@ QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
 }}
 
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid {TEXT_SEC};
-    width: 0px;
-    height: 0px;
+    image: url(__ICONS_DIR__/arrow-down.svg);
+    width: 10px;
+    height: 6px;
 }}
 
 QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
-    border-top-color: {BORDER};
+    image: url(__ICONS_DIR__/arrow-down-disabled.svg);
+    width: 10px;
+    height: 6px;
 }}
 
 /* ================================================================
@@ -377,8 +377,8 @@ QCheckBox::indicator {{
 }}
 
 QCheckBox::indicator:checked {{
-    background-color: {SUCCESS};
-    border-color: {SUCCESS};
+    background-color: {ACCENT};
+    border-color: {ACCENT};
     image: url(__ICONS_DIR__/check-white.svg);
 }}
 
