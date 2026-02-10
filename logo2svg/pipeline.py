@@ -103,6 +103,8 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
         removed = session.remove_tm()
         if removed:
             _log(f"  Removed {removed} small trademark symbol(s) from margins", config)
+    else:
+        session.ensure_square()
 
     # Stage 2: Quantize colors
     _log("  Quantizing colors...", config)

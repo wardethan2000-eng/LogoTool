@@ -148,8 +148,9 @@ class Session:
         """
         self._path = Path(path)
         self._image, self._fg_mask = load_image(self._path, bg_color)
-        # Pad to a square canvas so the output is never rectangular
-        self._pad_to_square()
+        # NOTE: do NOT pad to square here — _pad_to_square must run
+        # after remove_tm() so TM symbols are still at the image
+        # margins when the margin check runs.
         # Reset downstream
         self._labels = None
         self._centers_rgb = None
@@ -162,12 +163,25 @@ class Session:
         """Remove small TM / ® symbols from the foreground mask margins.
 
         Should be called after :meth:`load` and before :meth:`quantize`.
+        After TM removal, pads the image to a square canvas.
         Returns the number of components removed.
         """
         if self._fg_mask is None:
             raise RuntimeError("No image loaded. Call load() first.")
         self._fg_mask, removed = remove_tm_symbols(self._fg_mask)
+        # Pad to square AFTER margin-based TM detection so symbols
+        # that are near the original edges are still caught.
+        self._pad_to_square()
         return removed
+
+    def ensure_square(self) -> None:
+        """Pad image to a square canvas if not already square.
+
+        Call this after :meth:`load` when TM removal is skipped.
+        When :meth:`remove_tm` is used, padding is applied automatically.
+        """
+        if self._image is not None:
+            self._pad_to_square()
 
     def quantize(
         self,

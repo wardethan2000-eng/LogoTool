@@ -54,6 +54,9 @@ class LoadWorker(_BaseWorker):
             removed = self._session.remove_tm()
             if removed:
                 self.progress.emit(f"Removed {removed} TM symbol(s)")
+        else:
+            # Pad to square even when TM removal is skipped
+            self._session.ensure_square()
         return None
 
 
