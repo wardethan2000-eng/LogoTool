@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         # Session & settings
         self._session = Session()
         self._bg_color: str = ""
+        self._remove_tm: bool = True
         self._worker = None  # current QThread reference (keep alive)
 
         self._build_menu_bar()
@@ -155,7 +156,8 @@ class MainWindow(QMainWindow):
         """Open and begin processing *path*."""
         self._set_busy(True, f"Loading {Path(path).name}…")
         worker = LoadWorker(
-            self._session, path, bg_color=self._bg_color or None
+            self._session, path, bg_color=self._bg_color or None,
+            remove_tm=self._remove_tm,
         )
         worker.progress.connect(self._status_label.setText)
         worker.finished.connect(self._on_load_done)
@@ -194,6 +196,7 @@ class MainWindow(QMainWindow):
             opttolerance=self._session.opttolerance,
             turdsize=self._session.turdsize,
             bg_color=self._bg_color,
+            remove_tm=self._remove_tm,
             parent=self,
         )
         if dlg.exec() != SettingsDialog.DialogCode.Accepted:
@@ -215,6 +218,12 @@ class MainWindow(QMainWindow):
         if dlg.bg_color != self._bg_color:
             self._bg_color = dlg.bg_color
             # Need to reload with new bg colour
+            if self._session.path:
+                self.open_file(str(self._session.path))
+                return
+        if dlg.remove_tm != self._remove_tm:
+            self._remove_tm = dlg.remove_tm
+            # Need to reload to apply / undo TM removal
             if self._session.path:
                 self.open_file(str(self._session.path))
                 return

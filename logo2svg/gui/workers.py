@@ -39,16 +39,21 @@ class _BaseWorker(QThread):
 
 
 class LoadWorker(_BaseWorker):
-    """Load an image + detect background."""
+    """Load an image + detect background, optionally remove TM symbols."""
 
-    def __init__(self, session: Session, path: str, bg_color: str | None = None, parent=None):
+    def __init__(self, session: Session, path: str, bg_color: str | None = None, remove_tm: bool = True, parent=None):
         super().__init__(session, parent)
         self._path = path
         self._bg_color = bg_color
+        self._remove_tm = remove_tm
 
     def _run(self) -> None:
         self.progress.emit("Loading image…")
         self._session.load(self._path, bg_color=self._bg_color)
+        if self._remove_tm:
+            removed = self._session.remove_tm()
+            if removed:
+                self.progress.emit(f"Removed {removed} TM symbol(s)")
         return None
 
 

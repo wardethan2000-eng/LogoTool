@@ -30,6 +30,7 @@ class SettingsDialog(QDialog):
         opttolerance: float = 0.2,
         turdsize: int = 2,
         bg_color: str = "",
+        remove_tm: bool = True,
         parent=None,
     ):
         super().__init__(parent)
@@ -91,6 +92,15 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Background colour:", self._bg_color)
 
+        # Remove TM symbols
+        self._remove_tm = QCheckBox("Remove TM / ® symbols from margins")
+        self._remove_tm.setChecked(remove_tm)
+        self._remove_tm.setToolTip(
+            "Automatically detect and remove small trademark symbols "
+            "(TM, ®, ©) located near the edges of the logo."
+        )
+        form.addRow("", self._remove_tm)
+
         layout.addLayout(form)
 
         # OK / Cancel
@@ -123,3 +133,7 @@ class SettingsDialog(QDialog):
     @property
     def bg_color(self) -> str:
         return self._bg_color.text().strip()
+
+    @property
+    def remove_tm(self) -> bool:
+        return self._remove_tm.isChecked()

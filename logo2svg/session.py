@@ -20,6 +20,7 @@ from .image_loader import load_image
 from .layer_separator import separate_layers
 from .quantizer import quantize_colors
 from .svg_writer import write_preview, write_svg_files
+from .tm_remover import remove_tm_symbols
 from .tracer import trace_mask_to_svg_paths
 
 
@@ -154,6 +155,17 @@ class Session:
         self._traced = False
 
     # -- stage 2: quantize ------------------------------------------------
+
+    def remove_tm(self) -> int:
+        """Remove small TM / ® symbols from the foreground mask margins.
+
+        Should be called after :meth:`load` and before :meth:`quantize`.
+        Returns the number of components removed.
+        """
+        if self._fg_mask is None:
+            raise RuntimeError("No image loaded. Call load() first.")
+        self._fg_mask, removed = remove_tm_symbols(self._fg_mask)
+        return removed
 
     def quantize(
         self,

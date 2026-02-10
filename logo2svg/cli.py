@@ -83,6 +83,10 @@ from .pipeline import PipelineConfig, process_batch, process_single
     "--gui", is_flag=True, default=False,
     help="Launch the graphical interface instead of processing on the command line.",
 )
+@click.option(
+    "--keep-tm", is_flag=True, default=False,
+    help="Keep small trademark symbols (TM/®) instead of auto-removing them from margins.",
+)
 def main(
     input_path: str,
     colors: int | None,
@@ -102,6 +106,7 @@ def main(
     width: float | None,
     report: bool,
     gui: bool,
+    keep_tm: bool,
 ) -> None:
     """Convert a PNG or JPEG logo into color-separated SVG files for 3D printing.
 
@@ -185,6 +190,7 @@ def main(
         scale=scale,
         width=width,
         report=report,
+        remove_tm=not keep_tm,
     )
 
     try:

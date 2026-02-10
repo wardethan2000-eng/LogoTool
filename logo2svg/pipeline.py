@@ -35,6 +35,8 @@ class PipelineConfig:
     width: float | None = None
     # Report mode — print colours and exit without writing SVGs
     report: bool = False
+    # Automatically remove small TM / ® symbols from logo margins
+    remove_tm: bool = True
 
 
 def _log(msg: str, config: PipelineConfig, level: int = 1) -> None:
@@ -95,6 +97,12 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
     if fg_count == 0:
         _log("  Error: No foreground pixels detected. Try --bg-color to specify background.", config, level=0)
         return []
+
+    # Stage 1b: Remove TM / ® symbols from margins
+    if config.remove_tm:
+        removed = session.remove_tm()
+        if removed:
+            _log(f"  Removed {removed} small trademark symbol(s) from margins", config)
 
     # Stage 2: Quantize colors
     _log("  Quantizing colors...", config)
