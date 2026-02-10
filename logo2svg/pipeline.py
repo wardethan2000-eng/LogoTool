@@ -27,6 +27,7 @@ class PipelineConfig:
     bg_color: str | None = None
     preview: bool = False
     simplify: float | None = None
+    smooth: float = 1.4
 
 
 def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
@@ -69,11 +70,12 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
     # Stage 4: Trace contours to SVG paths
     click.echo("  Tracing contours to vector paths...")
     for layer in layers:
-        contours, hierarchy = find_contours(layer["mask"])
+        contours, hierarchy = find_contours(layer["mask"], smooth=config.smooth)
         layer["svg_paths"] = trace_to_svg_paths(
             contours, hierarchy,
             tolerance=config.tolerance,
             simplify=config.simplify,
+            smooth=config.smooth,
         )
         n_paths = len(layer["svg_paths"])
         click.echo(f"    {layer['hex_color']} ({layer['color_name']}): {n_paths} paths")

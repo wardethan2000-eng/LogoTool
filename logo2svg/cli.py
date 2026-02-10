@@ -48,6 +48,11 @@ from .pipeline import PipelineConfig, process_batch, process_single
     "--simplify", type=float, default=None,
     help="Simplification factor (0.0-1.0). Higher values reduce path complexity.",
 )
+@click.option(
+    "--smooth", type=float, default=1.4,
+    help="Gaussian smoothing sigma for mask edges before tracing. "
+         "Higher = smoother curves. 0 disables smoothing. Default: 1.4.",
+)
 def main(
     input_path: str,
     colors: int | None,
@@ -59,6 +64,7 @@ def main(
     preview: bool,
     batch: bool,
     simplify: float | None,
+    smooth: float,
 ) -> None:
     """Convert a PNG logo into color-separated SVG files for 3D printing.
 
@@ -88,6 +94,10 @@ def main(
         click.echo("Error: --tolerance must be positive.", err=True)
         sys.exit(1)
 
+    if smooth < 0:
+        click.echo("Error: --smooth must be non-negative.", err=True)
+        sys.exit(1)
+
     # Resolve output directory
     if output_dir is not None:
         out_path = Path(output_dir)
@@ -105,6 +115,7 @@ def main(
         bg_color=bg_color,
         preview=preview,
         simplify=simplify,
+        smooth=smooth,
     )
 
     try:

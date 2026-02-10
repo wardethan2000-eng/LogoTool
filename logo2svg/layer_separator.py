@@ -62,11 +62,15 @@ def separate_layers(
     return layers
 
 
-def _morphological_cleanup(mask: np.ndarray, kernel_size: int = 3) -> np.ndarray:
-    """Apply morphological close (fill tiny holes) then open (remove speckles)."""
+def _morphological_cleanup(mask: np.ndarray, kernel_size: int = 5) -> np.ndarray:
+    """Apply morphological close (fill tiny holes) then open (remove speckles).
+
+    Uses a 5x5 kernel by default for effective cleanup at typical logo resolutions.
+    Close uses 2 iterations to better fill gaps at color boundaries.
+    """
     kernel = np.ones((kernel_size, kernel_size), np.uint8)
     # Close: dilate then erode — fills small gaps within the mask
-    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
     # Open: erode then dilate — removes small noise specks
     opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel, iterations=1)
     return opened

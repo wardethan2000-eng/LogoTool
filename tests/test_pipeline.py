@@ -166,3 +166,45 @@ def test_pipeline_svgs_share_viewbox(tmp_path):
     # All SVGs should have the same viewBox
     assert len(viewboxes) == 1
     assert viewboxes.pop() == "0 0 200 200"
+
+
+def test_pipeline_with_smooth_zero(tmp_path):
+    """Pipeline should work with smoothing explicitly disabled."""
+    png_path = tmp_path / "test_logo.png"
+    _create_two_color_logo(png_path)
+
+    config = PipelineConfig(
+        colors=2,
+        tolerance=2.0,
+        output_dir=tmp_path,
+        min_area=50,
+        smooth=0.0,
+    )
+
+    output_files = process_single(png_path, config)
+    svg_files = [f for f in output_files if f.suffix == ".svg"]
+    assert len(svg_files) == 2
+    for svg_file in svg_files:
+        content = svg_file.read_text()
+        assert "<path" in content
+
+
+def test_pipeline_with_high_smooth(tmp_path):
+    """Pipeline should work with high smoothing value."""
+    png_path = tmp_path / "test_logo.png"
+    _create_two_color_logo(png_path)
+
+    config = PipelineConfig(
+        colors=2,
+        tolerance=2.0,
+        output_dir=tmp_path,
+        min_area=50,
+        smooth=3.0,
+    )
+
+    output_files = process_single(png_path, config)
+    svg_files = [f for f in output_files if f.suffix == ".svg"]
+    assert len(svg_files) >= 1
+    for svg_file in svg_files:
+        content = svg_file.read_text()
+        assert "<svg" in content

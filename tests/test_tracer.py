@@ -76,3 +76,47 @@ def test_trace_with_simplify():
 
     # Simplified paths should generally be shorter (fewer control points)
     assert len(paths_simplified[0]) <= len(paths_default[0]) * 1.5  # Allow some margin
+
+
+def test_find_contours_with_smooth():
+    """Smoothing should still produce valid contours."""
+    mask = _make_ring_mask(200, 200, 100, 100, 80, 40)
+    contours, hierarchy = find_contours(mask, smooth=1.4)
+    assert len(contours) >= 1
+    assert hierarchy is not None
+
+
+def test_smooth_produces_valid_paths():
+    """Full trace with smooth should produce valid SVG paths."""
+    mask = _make_ring_mask(200, 200, 100, 100, 80, 40)
+    contours, hierarchy = find_contours(mask, smooth=1.4)
+    paths = trace_to_svg_paths(contours, hierarchy, tolerance=2.0, smooth=1.4)
+    assert len(paths) >= 1
+    path = paths[0]
+    assert path.startswith("M")
+    assert "Z" in path
+
+
+def test_smooth_produces_reasonable_complexity():
+    """Smoothed contours should produce paths with reasonable segment counts."""
+    mask = _make_ring_mask(200, 200, 100, 100, 80, 40)
+
+    contours_smooth, hier_smooth = find_contours(mask, smooth=2.0)
+    paths_smooth = trace_to_svg_paths(contours_smooth, hier_smooth, tolerance=2.0, smooth=2.0)
+
+    assert len(paths_smooth) >= 1
+    # A smoothed ring should use cubic bezier curves (C commands), not line segments
+    assert " C " in paths_smooth[0]
+    # Should have a reasonable number of segments (not hundreds from pixel staircase)
+    segment_count = paths_smooth[0].count(" C ")
+    assert segment_count <= 20, f"Expected <=20 bezier segments, got {segment_count}"
+
+
+def test_smooth_zero_matches_original():
+    """smooth=0 should produce identical output to no smoothing."""
+    mask = _make_rectangle_mask(100, 100, 20, 20, 80, 80)
+    contours_a, hier_a = find_contours(mask)
+    contours_b, hier_b = find_contours(mask, smooth=0.0)
+    paths_a = trace_to_svg_paths(contours_a, hier_a, tolerance=2.0)
+    paths_b = trace_to_svg_paths(contours_b, hier_b, tolerance=2.0, smooth=0.0)
+    assert paths_a == paths_b
