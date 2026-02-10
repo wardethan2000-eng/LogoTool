@@ -1,7 +1,7 @@
 """Centre preview panel with composite rendering and empty-state drop zone.
 
 The preview occupies the main content area and shows the RGBA composite
-of all visible layers over a dark checkerboard pattern.  When no image
+of all visible layers over a light checkerboard pattern.  When no image
 is loaded, a subtle drop-zone hint is displayed.
 """
 
@@ -37,7 +37,7 @@ class PreviewPanel(QWidget):
     def set_composite(self, rgba: np.ndarray) -> None:
         """Display an (H, W, 4) RGBA uint8 numpy array.
 
-        Alpha-composited over a dark checkerboard to indicate transparency.
+        Alpha-composited over a light checkerboard to indicate transparency.
         """
         h, w = rgba.shape[:2]
         checker = self._checker_board(h, w)
@@ -111,11 +111,11 @@ class PreviewPanel(QWidget):
         self._image_label.setText("")
 
     @staticmethod
-    def _checker_board(h: int, w: int, cell: int = 8) -> np.ndarray:
-        """Return (H, W, 3) uint8 dark checkerboard pattern."""
+    def _checker_board(h: int, w: int, cell: int = 10) -> np.ndarray:
+        """Return (H, W, 3) uint8 light checkerboard pattern."""
         rows = np.arange(h) // cell
         cols = np.arange(w) // cell
         grid = (rows[:, None] + cols[None, :]) % 2
-        light, dark = 38, 28  # dark checker for dark theme
+        light, dark = 255, 204  # white / light-gray checker
         board = np.where(grid[:, :, None] == 0, light, dark).astype(np.uint8)
         return np.broadcast_to(board, (h, w, 3)).copy()

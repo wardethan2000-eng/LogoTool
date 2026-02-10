@@ -1,7 +1,7 @@
 """Application entry-point for the logo2svg GUI.
 
-Sets up the dark Fusion theme, applies the central QSS stylesheet,
-and launches the main window.
+Sets up the Fusion theme with a modern light palette, applies the
+central QSS stylesheet, and launches the main window.
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ from .style import (
 )
 
 
-def _apply_dark_palette(app: QApplication) -> None:
-    """Set a dark QPalette as baseline for widgets that ignore QSS."""
+def _apply_light_palette(app: QApplication) -> None:
+    """Set a light QPalette as baseline for widgets that ignore QSS."""
     p = QPalette()
     p.setColor(QPalette.ColorRole.Window, QColor(BG))
     p.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
@@ -69,7 +69,7 @@ def run_gui(file_path: str | None = None) -> int:
     app.setOrganizationName("logo2svg")
     app.setStyle("Fusion")
 
-    _apply_dark_palette(app)
+    _apply_light_palette(app)
     app.setStyleSheet(STYLESHEET)
 
     window = MainWindow()

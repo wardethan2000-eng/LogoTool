@@ -5,18 +5,18 @@ Layout
 ┌─ Menu bar ───────────────────────────────────────────────┐
 ├─ Header bar ─────────────────────────────────────────────┤
 │  logo2svg   │ [Open] [Export SVGs] │ Colours [Auto] │ ⚙ │
-├───────────────────────────────┬──────────────────────────┤
-│                               │  SOURCE                  │
-│                               │  [thumb]  file.png       │
-│       PREVIEW AREA            │          800×600 · PNG   │
-│  (drag and drop to open)      ├──────────────────────────┤
-│                               │  LAYERS            [3]   │
-│                               │  ┌──────────────────┐    │
-│                               │  │ ☐ ■ Red  #FF0000 │    │
-│                               │  │ ☐ ■ Blue #0000FF │    │
-│                               │  └──────────────────┘    │
-│                               │  [Merge Selected]        │
-├───────────────────────────────┴──────────────────────────┤
+├───────────────────────────┬──────────────────────────────┤
+│                           │  SOURCE IMAGE                │
+│                           │  (large view of original)    │
+│       PREVIEW AREA        │                              │
+│  (composite with layers)  ├──────────────────────────────┤
+│                           │  LAYERS            [3]       │
+│  (drag and drop to open)  │  ┌──────────────────┐       │
+│                           │  │ ☐ ■ Red  #FF0000 │       │
+│                           │  │ ☐ ■ Blue #0000FF │       │
+│                           │  └──────────────────┘       │
+│                           │  [Merge Selected]            │
+├───────────────────────────┴──────────────────────────────┤
 │  Ready                                         ████████  │
 └──────────────────────────────────────────────────────────┘
 """
@@ -56,7 +56,7 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 
 
 class MainWindow(QMainWindow):
-    """Top-level window with modern dark-themed layout."""
+    """Top-level window with modern light-themed layout."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -196,27 +196,24 @@ class MainWindow(QMainWindow):
         self._preview = PreviewPanel()
         main_splitter.addWidget(self._preview)
 
-        # Right: sidebar with source + layers
+        # Right: sidebar with source image (top) + layers (bottom)
         right_sidebar = QFrame()
         right_sidebar.setObjectName("rightSidebar")
-        right_sidebar.setMinimumWidth(320)
-        right_sidebar.setMaximumWidth(500)
+        right_sidebar.setMinimumWidth(380)
+        right_sidebar.setMaximumWidth(600)
 
-        right_layout = QVBoxLayout(right_sidebar)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
+        right_outer = QVBoxLayout(right_sidebar)
+        right_outer.setContentsMargins(0, 0, 0, 0)
+        right_outer.setSpacing(0)
 
-        # Source info panel (compact, at top)
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        right_splitter.setHandleWidth(1)
+
+        # Source image viewer (top of right side, large)
         self._source_panel = SourcePanel()
-        right_layout.addWidget(self._source_panel)
+        right_splitter.addWidget(self._source_panel)
 
-        # Divider
-        divider = QFrame()
-        divider.setFixedHeight(1)
-        divider.setStyleSheet(f"background-color: {BORDER};")
-        right_layout.addWidget(divider)
-
-        # Layer panel (fills remaining space)
+        # Layer panel (bottom of right side)
         self._layer_panel = LayerPanel()
         self._layer_panel.visibility_toggled.connect(
             self._on_visibility_toggled
@@ -226,14 +223,20 @@ class MainWindow(QMainWindow):
         )
         self._layer_panel.delete_requested.connect(self._on_delete_layer)
         self._layer_panel.merge_requested.connect(self._on_merge_layers)
-        right_layout.addWidget(self._layer_panel, stretch=1)
+        right_splitter.addWidget(self._layer_panel)
 
+        # Source image gets more space than layers
+        right_splitter.setStretchFactor(0, 3)
+        right_splitter.setStretchFactor(1, 2)
+        right_splitter.setSizes([350, 250])
+
+        right_outer.addWidget(right_splitter)
         main_splitter.addWidget(right_sidebar)
 
         # Stretch factors: preview stretches, sidebar stays
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setStretchFactor(1, 0)
-        main_splitter.setSizes([880, 380])
+        main_splitter.setSizes([700, 560])
 
         root.addWidget(main_splitter, stretch=1)
 

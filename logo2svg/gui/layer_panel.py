@@ -27,6 +27,7 @@ from .style import (
     BORDER_LIGHT,
     CARD,
     CARD_HOVER,
+    SURFACE,
     TEXT,
     TEXT_MUTED,
     TEXT_SEC,
@@ -192,6 +193,7 @@ class LayerPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("layerPanel")
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(16, 12, 16, 12)

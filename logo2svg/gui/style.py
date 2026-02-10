@@ -1,7 +1,7 @@
-"""Centralized dark-theme stylesheet for the logo2svg GUI.
+"""Modern light-theme stylesheet for the logo2svg GUI.
 
-Colour palette based on Tailwind's zinc/indigo scales for a modern,
-neutral dark appearance.  Every GUI module imports tokens from here
+Colour palette based on Tailwind's gray/indigo scales for a clean,
+readable light appearance.  Every GUI module imports tokens from here
 so the look-and-feel stays consistent.
 """
 
@@ -9,24 +9,24 @@ from __future__ import annotations
 
 # ── Colour Palette ──────────────────────────────────────────────────
 
-BG           = "#18181b"     # main window background
-SURFACE      = "#1c1c20"     # sidebar / header background
-CARD         = "#27272a"     # card / input background
-CARD_HOVER   = "#323236"     # hovered card
-BORDER       = "#3f3f46"     # default border
-BORDER_LIGHT = "#52525b"     # active / hovered border
+BG           = "#f5f5f7"     # main window background
+SURFACE      = "#ffffff"     # sidebar / header / card surface
+CARD         = "#edf0f4"     # input backgrounds, secondary cards
+CARD_HOVER   = "#e2e5ea"     # hovered card
+BORDER       = "#d1d5db"     # default border
+BORDER_LIGHT = "#b0b8c4"     # active / hovered border
 
-ACCENT       = "#6366f1"     # primary accent (indigo-500)
-ACCENT_HOVER = "#818cf8"     # lighter accent on hover
-ACCENT_MUTED = "#312e81"     # very subtle accent bg
+ACCENT       = "#4f46e5"     # primary accent (indigo-600)
+ACCENT_HOVER = "#6366f1"     # lighter accent on hover (indigo-500)
+ACCENT_MUTED = "#eef2ff"     # very subtle accent bg
 
-TEXT         = "#fafafa"     # primary text
-TEXT_SEC     = "#a1a1aa"     # secondary text
-TEXT_MUTED   = "#71717a"     # muted / placeholder
+TEXT         = "#111827"     # primary text (gray-900)
+TEXT_SEC     = "#6b7280"     # secondary text (gray-500)
+TEXT_MUTED   = "#9ca3af"     # muted / placeholder (gray-400)
 
-SUCCESS      = "#22c55e"
-ERROR        = "#ef4444"
-WARNING      = "#eab308"
+SUCCESS      = "#16a34a"
+ERROR        = "#dc2626"
+WARNING      = "#ca8a04"
 
 # ── Geometry Tokens ─────────────────────────────────────────────────
 
@@ -203,8 +203,8 @@ QPushButton[cssClass="primary"]:hover {{
 }}
 
 QPushButton[cssClass="primary"]:pressed {{
-    background-color: #4f46e5;
-    border-color: #4f46e5;
+    background-color: #4338ca;
+    border-color: #4338ca;
 }}
 
 QPushButton[cssClass="primary"]:disabled {{
@@ -506,5 +506,13 @@ QFrame[cssClass="layerCard"]:hover {{
 QFrame#headerBar {{
     background-color: {SURFACE};
     border-bottom: 1px solid {BORDER};
+}}
+
+/* ================================================================
+   APP-SPECIFIC: layer panel (in splitter)
+   ================================================================ */
+
+QWidget#layerPanel {{
+    background-color: {SURFACE};
 }}
 """
