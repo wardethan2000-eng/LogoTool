@@ -74,6 +74,7 @@ class Session:
     min_area: int
     alphamax: float
     opttolerance: float
+    turdsize: int
     scale: float
     width: float | None
 
@@ -83,6 +84,7 @@ class Session:
         min_area: int = 100,
         alphamax: float = 1.0,
         opttolerance: float = 0.2,
+        turdsize: int = 2,
         scale: float = 1.0,
         width: float | None = None,
     ) -> None:
@@ -97,6 +99,7 @@ class Session:
         self.min_area = min_area
         self.alphamax = alphamax
         self.opttolerance = opttolerance
+        self.turdsize = turdsize
         self.scale = scale
         self.width = width
 
@@ -275,7 +278,7 @@ class Session:
         for layer in self._layers:
             layer["svg_paths"] = trace_mask_to_svg_paths(
                 layer["mask"],
-                turdsize=2,
+                turdsize=self.turdsize,
                 alphamax=self.alphamax,
                 opticurve=True,
                 opttolerance=self.opttolerance,

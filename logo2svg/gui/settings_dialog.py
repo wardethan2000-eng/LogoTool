@@ -28,6 +28,7 @@ class SettingsDialog(QDialog):
         min_area: int = 100,
         alphamax: float = 1.0,
         opttolerance: float = 0.2,
+        turdsize: int = 2,
         bg_color: str = "",
         parent=None,
     ):
@@ -72,6 +73,16 @@ class SettingsDialog(QDialog):
         )
         form.addRow("Opt tolerance:", self._opttolerance)
 
+        # turdsize
+        self._turdsize = QSpinBox()
+        self._turdsize.setRange(0, 100)
+        self._turdsize.setValue(turdsize)
+        self._turdsize.setToolTip(
+            "Potrace speckle suppression: connected components up to this "
+            "many pixels are discarded during tracing."
+        )
+        form.addRow("Turd size (px):", self._turdsize)
+
         # Background colour override
         self._bg_color = QLineEdit(bg_color)
         self._bg_color.setPlaceholderText("#FFFFFF (leave blank for auto)")
@@ -104,6 +115,10 @@ class SettingsDialog(QDialog):
     @property
     def opttolerance(self) -> float:
         return self._opttolerance.value()
+
+    @property
+    def turdsize(self) -> int:
+        return self._turdsize.value()
 
     @property
     def bg_color(self) -> str:

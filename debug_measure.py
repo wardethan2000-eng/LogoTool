@@ -4,14 +4,14 @@ from pathlib import Path
 from logo2svg.image_loader import load_image
 from logo2svg.quantizer import quantize_colors
 from logo2svg.layer_separator import separate_layers
-from logo2svg.tracer import find_contours, trace_to_svg_paths, _compute_epsilon
-from logo2svg.pipeline import _erode_mask, _recover_fringe_pixels
+from logo2svg.tracer import find_contours, trace_to_svg_paths
+from logo2svg.session import Session
 
 image, fg_mask = load_image(Path("white_sox.png"))
 h, w = image.shape[:2]
-fg_eroded = _erode_mask(fg_mask)
+fg_eroded = Session._erode_mask(fg_mask)
 labels, centers = quantize_colors(image, fg_eroded)
-labels = _recover_fringe_pixels(image, labels, centers, fg_mask, fg_eroded)
+labels = Session._recover_fringe_pixels(image, labels, centers, fg_mask, fg_eroded)
 layers = separate_layers(labels, centers, fg_mask, min_area=100)
 
 # === 1. Morphological cleanup pixel loss ===
@@ -127,6 +127,8 @@ for sigma in [0.0, 0.8, 1.4]:
             cv2.drawContours(filled, contours, -1, 255, cv2.FILLED, hierarchy=hier)
         
         # Now do approxPolyDP + bezier (full trace pipeline)
+        # NOTE: simplify= and smooth= are accepted by the legacy wrapper but
+        # silently ignored — it re-rasterises contours and calls Potrace.
         paths = trace_to_svg_paths(contours, hier, tolerance=2.0, smooth=sigma)
         
         # Re-render the SVG paths as polygons

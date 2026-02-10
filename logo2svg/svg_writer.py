@@ -69,7 +69,7 @@ def _scale_path(d: str, scale: float) -> str:
     def _repl(m: re.Match) -> str:
         return f"{float(m.group()) * scale:.2f}"
 
-    return re.sub(r"-?\d+\.\d+", _repl, d)
+    return re.sub(r"-?\d+(?:\.\d+)?", _repl, d)
 
 
 def _write_single_color_svg(

@@ -22,3 +22,23 @@ def run_gui(file_path: str | None = None) -> int:
         window.open_file(file_path)
 
     return app.exec()
+
+
+def run_gui_cli() -> None:
+    """Console-script entry point for ``logo2svg-gui``.
+
+    Parses an optional positional file-path argument from *sys.argv*
+    and delegates to :func:`run_gui`.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="logo2svg-gui",
+        description="Launch the logo2svg graphical interface.",
+    )
+    parser.add_argument(
+        "file", nargs="?", default=None,
+        help="Optional image file to open on launch.",
+    )
+    args = parser.parse_args()
+    raise SystemExit(run_gui(args.file))

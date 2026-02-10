@@ -14,6 +14,7 @@ from logo2svg.svg_writer import (
     write_preview,
     _write_single_color_svg,
     _write_combined_svg,
+    _scale_path,
 )
 
 
@@ -201,3 +202,43 @@ class TestSharedViewbox:
             viewboxes.add(match.group(1))
         assert len(viewboxes) == 1
         assert viewboxes.pop() == "0 0 250 150"
+
+
+# ---------------------------------------------------------------------------
+# _scale_path
+# ---------------------------------------------------------------------------
+
+class TestScalePath:
+    """Tests for _scale_path coordinate scaling."""
+
+    def test_identity_scale(self):
+        """scale=1.0 should return the path string unchanged."""
+        d = "M 10.00 20.00 L 30.00 40.00 Z"
+        assert _scale_path(d, 1.0) == d
+
+    def test_scale_up(self):
+        """scale=2.0 should double all coordinates."""
+        d = "M 10.00 20.00 L 30.00 40.00 Z"
+        result = _scale_path(d, 2.0)
+        assert "20.00" in result
+        assert "40.00" in result
+        assert "60.00" in result
+        assert "80.00" in result
+
+    def test_scale_down_negative_coords(self):
+        """scale=0.5 with negative coordinates."""
+        d = "M -10.00 -20.00 L 30.00 40.00 Z"
+        result = _scale_path(d, 0.5)
+        assert "-5.00" in result
+        assert "-10.00" in result
+        assert "15.00" in result
+        assert "20.00" in result
+
+    def test_integers_without_decimals(self):
+        """Integers without decimal points should also be scaled."""
+        d = "M 10 20 L 30 40 Z"
+        result = _scale_path(d, 2.0)
+        assert "20.00" in result
+        assert "40.00" in result
+        assert "60.00" in result
+        assert "80.00" in result

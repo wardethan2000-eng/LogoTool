@@ -6,55 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import click
-import cv2
 import numpy as np
 
-from .color_utils import hex_to_rgb
-from .image_loader import load_image
-from .layer_separator import separate_layers
-from .quantizer import quantize_colors
 from .session import Session
-from .svg_writer import write_preview, write_svg_files
-from .tracer import trace_mask_to_svg_paths
-
-
-def _erode_mask(mask: np.ndarray, iterations: int = 1) -> np.ndarray:
-    """Erode a boolean mask to strip anti-aliased fringe at background boundary."""
-    mask_uint8 = mask.astype(np.uint8)
-    kernel = np.ones((3, 3), np.uint8)
-    eroded = cv2.erode(mask_uint8, kernel, iterations=iterations)
-    return eroded.astype(bool)
-
-
-def _recover_fringe_pixels(
-    image: np.ndarray,
-    labels: np.ndarray,
-    centers_rgb: np.ndarray,
-    fg_mask: np.ndarray,
-    fg_mask_eroded: np.ndarray,
-) -> np.ndarray:
-    """Assign fringe pixels (in fg_mask but not fg_mask_eroded) to nearest cluster.
-
-    Fringe pixels are excluded from K-means to prevent anti-aliased colors
-    from creating spurious clusters, but we recover them here by assigning
-    each to the nearest cluster center in RGB space.
-    """
-    fringe = fg_mask & ~fg_mask_eroded
-    if not np.any(fringe):
-        return labels
-
-    fringe_pixels = image[fringe].astype(np.float64)
-    centers = centers_rgb.astype(np.float64)
-    # Distance to each cluster center
-    distances = np.linalg.norm(
-        fringe_pixels[:, np.newaxis, :] - centers[np.newaxis, :, :],
-        axis=2,
-    )
-    nearest = distances.argmin(axis=1).astype(np.int32)
-
-    labels = labels.copy()
-    labels[fringe] = nearest
-    return labels
 
 
 @dataclass
@@ -70,6 +24,7 @@ class PipelineConfig:
     # Potrace parameters
     alphamax: float = 1.0
     opttolerance: float = 0.2
+    turdsize: int = 2
     # Verbosity: 0 = quiet, 1 = normal (default), 2 = verbose
     verbosity: int = 1
     # Target colours — skip K-means and assign to these exact colours
@@ -103,6 +58,15 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
     """
     _log(f"Processing: {input_path.name}", config)
 
+    # Warn if the file extension isn't in the tested set
+    if input_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        _log(
+            f"  Warning: '{input_path.suffix}' is not a tested format. "
+            "For best results use PNG input.",
+            config,
+            level=0,
+        )
+
     # JPEG artifact warning
     if input_path.suffix.lower() in (".jpg", ".jpeg"):
         _log(
@@ -116,6 +80,7 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
         min_area=config.min_area,
         alphamax=config.alphamax,
         opttolerance=config.opttolerance,
+        turdsize=config.turdsize,
         scale=config.scale,
         width=config.width,
     )
@@ -179,7 +144,7 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
 
 
 # Supported image file extensions (Pillow can load all of these)
-SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
 def process_batch(input_dir: Path, config: PipelineConfig) -> list[Path]:
@@ -208,30 +173,6 @@ def process_batch(input_dir: Path, config: PipelineConfig) -> list[Path]:
 
     _log(f"\nBatch complete. {len(all_outputs)} files created.", config)
     return all_outputs
-
-
-def _print_report(
-    labels: np.ndarray,
-    centers_rgb: np.ndarray,
-    fg_mask: np.ndarray,
-    config: PipelineConfig,
-) -> None:
-    """Print detected colours with pixel counts (--report mode)."""
-    from .color_utils import rgb_to_hex, nearest_color_name
-
-    click.echo("\nColor Report")
-    click.echo("=" * 40)
-    total_fg = int(np.count_nonzero(fg_mask))
-    click.echo(f"Total foreground pixels: {total_fg}")
-    click.echo()
-    for k, rgb in enumerate(centers_rgb):
-        r, g, b = int(rgb[0]), int(rgb[1]), int(rgb[2])
-        hex_color = rgb_to_hex(r, g, b)
-        name = nearest_color_name(r, g, b)
-        count = int(np.count_nonzero(labels[fg_mask] == k))
-        pct = 100.0 * count / total_fg if total_fg > 0 else 0
-        click.echo(f"  {hex_color}  {name:<20s}  {count:>8d} px  ({pct:5.1f}%)")
-    click.echo()
 
 
 def _print_report_from_session(session: Session, config: PipelineConfig) -> None:

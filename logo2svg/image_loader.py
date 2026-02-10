@@ -144,9 +144,11 @@ def _remove_bg_color(
     border_labels.discard(0)  # label 0 = non-matching pixels in connectedComponents
 
     # Background = bg-colored pixels connected to the image border
-    bg_mask = np.zeros((h, w), dtype=bool)
-    for label_id in border_labels:
-        bg_mask |= (label_img == label_id)
+    if border_labels:
+        border_array = np.array(list(border_labels))
+        bg_mask = np.isin(label_img, border_array)
+    else:
+        bg_mask = np.zeros((h, w), dtype=bool)
 
     return ~bg_mask
 

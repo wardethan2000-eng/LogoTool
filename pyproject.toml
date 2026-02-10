@@ -31,4 +31,4 @@ gui = [
 
 [project.scripts]
 logo2svg = "logo2svg.cli:main"
-logo2svg-gui = "logo2svg.gui.app:run_gui"
+logo2svg-gui = "logo2svg.gui.app:run_gui_cli"

@@ -5,21 +5,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 from logo2svg.image_loader import load_image
-from logo2svg.pipeline import _erode_mask
+from logo2svg.session import Session
 from logo2svg.quantizer import quantize_colors
 from logo2svg.layer_separator import separate_layers
 from logo2svg.tracer import find_contours
 
-# Legacy helpers removed from tracer.py — provide stubs for this debug script
-def _smooth_contour(pts, sigma=1.0):
-    """Stub: smoothing was removed when Potrace replaced the OpenCV pipeline."""
-    return pts
-
-def _compute_epsilon(pts_cv, factor=0.005):
-    """Stub: epsilon-based simplification was removed when Potrace replaced the OpenCV pipeline."""
-    import cv2
-    perim = cv2.arcLength(pts_cv, closed=True)
-    return factor * perim
+# Legacy helpers — shared stubs for functions removed when Potrace replaced
+# the OpenCV pipeline.
+from debug_utils import smooth_contour as _smooth_contour, compute_epsilon as _compute_epsilon
 
 def _svg_path_to_polygon(path_d: str, num_samples: int = 20) -> np.ndarray | None:
     """Parse SVG path d string and convert curves to polygon points."""
@@ -212,6 +205,8 @@ rendered = np.zeros((h, w, 3), dtype=np.uint8)
 
 for li, layer in enumerate(layers):
     contours, hierarchy = find_contours(layer["mask"], smooth=1.4)
+    # NOTE: simplify= and smooth= are accepted by the legacy wrapper but
+    # silently ignored — it re-rasterises contours and calls Potrace.
     svg_paths = trace_to_svg_paths(contours, hierarchy, tolerance=2.0, simplify=None, smooth=1.4)
     
     hex_clean = layer['hex_color'].lstrip('#')

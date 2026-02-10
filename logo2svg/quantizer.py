@@ -173,9 +173,24 @@ def _reassign_boundary_pixels(
 
 
 def _lab_centers_to_rgb(centers_lab: np.ndarray) -> np.ndarray:
-    """Convert LAB cluster centers to RGB uint8 values."""
-    # cv2.cvtColor expects (N, 1, 3) uint8 for LAB->RGB conversion
-    centers_lab_uint8 = np.clip(centers_lab, 0, 255).astype(np.uint8)
-    centers_lab_img = centers_lab_uint8.reshape(1, -1, 3)
-    centers_rgb_img = cv2.cvtColor(centers_lab_img, cv2.COLOR_LAB2RGB)
-    return centers_rgb_img.reshape(-1, 3)
+    """Convert LAB cluster centers to RGB uint8 values.
+
+    Keeps the data in floating-point through the LAB→RGB conversion to
+    avoid quantisation error from premature uint8 rounding.  The input
+    *centers_lab* values are in the OpenCV uint8 LAB range (L: 0-255,
+    a/b: 0-255) because they originate from ``cv2.cvtColor`` on a uint8
+    image.  We convert to the float LAB range (L: 0-100, a/b: −128..127)
+    before calling ``cv2.cvtColor`` with float32 input, then clip and
+    cast the final RGB result to uint8.
+    """
+    # Convert from uint8 LAB range to float LAB range
+    centers = centers_lab.astype(np.float32).reshape(1, -1, 3)
+    centers[:, :, 0] = centers[:, :, 0] * (100.0 / 255.0)   # L: 0-255 → 0-100
+    centers[:, :, 1] = centers[:, :, 1] - 128.0               # a: 0-255 → -128..127
+    centers[:, :, 2] = centers[:, :, 2] - 128.0               # b: 0-255 → -128..127
+
+    # cv2.cvtColor with float32 LAB input returns float32 RGB in [0, 1]
+    rgb_float = cv2.cvtColor(centers, cv2.COLOR_Lab2RGB)
+
+    # Convert [0, 1] float RGB to uint8
+    return np.clip(rgb_float * 255.0, 0, 255).astype(np.uint8).reshape(-1, 3)

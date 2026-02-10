@@ -5,14 +5,15 @@ from scipy.ndimage import gaussian_filter1d
 from logo2svg.image_loader import load_image
 from logo2svg.quantizer import quantize_colors
 from logo2svg.layer_separator import separate_layers
-from logo2svg.tracer import find_contours, _smooth_contour
-from logo2svg.pipeline import _erode_mask, _recover_fringe_pixels
+from logo2svg.tracer import find_contours
+from logo2svg.session import Session
+from debug_utils import smooth_contour as _smooth_contour
 
 image, fg_mask = load_image(Path("white_sox.png"))
 h, w = image.shape[:2]
-fg_eroded = _erode_mask(fg_mask)
+fg_eroded = Session._erode_mask(fg_mask)
 labels, centers = quantize_colors(image, fg_eroded)
-labels = _recover_fringe_pixels(image, labels, centers, fg_mask, fg_eroded)
+labels = Session._recover_fringe_pixels(image, labels, centers, fg_mask, fg_eroded)
 layers = separate_layers(labels, centers, fg_mask, min_area=100)
 
 header = f"{'combo':>30} | pts | diff"

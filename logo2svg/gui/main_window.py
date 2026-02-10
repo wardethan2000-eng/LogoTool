@@ -192,6 +192,7 @@ class MainWindow(QMainWindow):
             min_area=self._session.min_area,
             alphamax=self._session.alphamax,
             opttolerance=self._session.opttolerance,
+            turdsize=self._session.turdsize,
             bg_color=self._bg_color,
             parent=self,
         )
@@ -207,6 +208,9 @@ class MainWindow(QMainWindow):
             changed = True
         if dlg.opttolerance != self._session.opttolerance:
             self._session.opttolerance = dlg.opttolerance
+            changed = True
+        if dlg.turdsize != self._session.turdsize:
+            self._session.turdsize = dlg.turdsize
             changed = True
         if dlg.bg_color != self._bg_color:
             self._bg_color = dlg.bg_color

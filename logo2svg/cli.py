@@ -51,6 +51,10 @@ from .pipeline import PipelineConfig, process_batch, process_single
          "Lower = more faithful. Higher = fewer bezier segments. Default: 0.2.",
 )
 @click.option(
+    "--turdsize", type=int, default=2,
+    help="Potrace speckle suppression: discard components up to this many pixels. Default: 2.",
+)
+@click.option(
     "--verbose", is_flag=True, default=False,
     help="Print detailed per-stage diagnostics.",
 )
@@ -90,6 +94,7 @@ def main(
     batch: bool,
     alphamax: float,
     opttolerance: float,
+    turdsize: int,
     verbose: bool,
     quiet: bool,
     target_colors: str | None,
@@ -137,6 +142,18 @@ def main(
         if not parsed_target_colors:
             click.echo("Error: --target-colors requires at least one hex color.", err=True)
             sys.exit(1)
+        # Validate each hex color early so users get a clear message
+        from .color_utils import hex_to_rgb
+        for hex_val in parsed_target_colors:
+            try:
+                hex_to_rgb(hex_val)
+            except ValueError:
+                click.echo(
+                    f"Error: invalid hex color '{hex_val}' in --target-colors. "
+                    "Expected format: '#RRGGBB' (e.g. '#FF0000').",
+                    err=True,
+                )
+                sys.exit(1)
 
     # Determine verbosity level
     verbosity = 1
@@ -162,6 +179,7 @@ def main(
         preview=preview,
         alphamax=alphamax,
         opttolerance=opttolerance,
+        turdsize=turdsize,
         verbosity=verbosity,
         target_colors=parsed_target_colors,
         scale=scale,
