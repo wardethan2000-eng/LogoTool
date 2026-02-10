@@ -1,12 +1,65 @@
-"""Application entry-point for the logo2svg GUI."""
+"""Application entry-point for the logo2svg GUI.
+
+Sets up the dark Fusion theme, applies the central QSS stylesheet,
+and launches the main window.
+"""
 
 from __future__ import annotations
 
 import sys
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
 from .main_window import MainWindow
+from .style import (
+    ACCENT,
+    BG,
+    CARD,
+    STYLESHEET,
+    SURFACE,
+    TEXT,
+    TEXT_MUTED,
+    TEXT_SEC,
+)
+
+
+def _apply_dark_palette(app: QApplication) -> None:
+    """Set a dark QPalette as baseline for widgets that ignore QSS."""
+    p = QPalette()
+    p.setColor(QPalette.ColorRole.Window, QColor(BG))
+    p.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
+    p.setColor(QPalette.ColorRole.Base, QColor(CARD))
+    p.setColor(QPalette.ColorRole.AlternateBase, QColor(SURFACE))
+    p.setColor(QPalette.ColorRole.ToolTipBase, QColor(CARD))
+    p.setColor(QPalette.ColorRole.ToolTipText, QColor(TEXT))
+    p.setColor(QPalette.ColorRole.Text, QColor(TEXT))
+    p.setColor(QPalette.ColorRole.Button, QColor(CARD))
+    p.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT))
+    p.setColor(QPalette.ColorRole.BrightText, QColor("#ffffff"))
+    p.setColor(QPalette.ColorRole.Link, QColor(ACCENT))
+    p.setColor(QPalette.ColorRole.Highlight, QColor(ACCENT))
+    p.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    p.setColor(QPalette.ColorRole.PlaceholderText, QColor(TEXT_MUTED))
+
+    # Disabled colours
+    p.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.WindowText,
+        QColor(TEXT_MUTED),
+    )
+    p.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.Text,
+        QColor(TEXT_MUTED),
+    )
+    p.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.ButtonText,
+        QColor(TEXT_MUTED),
+    )
+    app.setPalette(p)
 
 
 def run_gui(file_path: str | None = None) -> int:
@@ -14,6 +67,10 @@ def run_gui(file_path: str | None = None) -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("logo2svg")
     app.setOrganizationName("logo2svg")
+    app.setStyle("Fusion")
+
+    _apply_dark_palette(app)
+    app.setStyleSheet(STYLESHEET)
 
     window = MainWindow()
     window.show()
@@ -37,7 +94,9 @@ def run_gui_cli() -> None:
         description="Launch the logo2svg graphical interface.",
     )
     parser.add_argument(
-        "file", nargs="?", default=None,
+        "file",
+        nargs="?",
+        default=None,
         help="Optional image file to open on launch.",
     )
     args = parser.parse_args()

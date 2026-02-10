@@ -28,6 +28,13 @@ hidden_imports = (
         "webcolors",
         "potrace",
         "click",
+        # Explicit PyQt6 modules that collect_submodules sometimes misses
+        "PyQt6.sip",
+        "PyQt6.QtCore",
+        "PyQt6.QtGui",
+        "PyQt6.QtWidgets",
+        # GUI style module added recently
+        "logo2svg.gui.style",
     ]
 )
 
@@ -43,7 +50,7 @@ a = Analysis(
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["runtime_hook_pyqt6.py"],
     excludes=["tkinter", "matplotlib", "IPython", "jupyter"],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
