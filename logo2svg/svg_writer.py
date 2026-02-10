@@ -15,6 +15,7 @@ def write_svg_files(
     image_size: tuple[int, int],
     output_dir: Path,
     combined: bool = False,
+    scale: float = 1.0,
 ) -> list[Path]:
     """Write one SVG per color layer, optionally a combined SVG.
 
@@ -24,6 +25,7 @@ def write_svg_files(
         image_size: (height, width) of the source image.
         output_dir: Directory to write SVG files to.
         combined: Whether to also write a combined SVG.
+        scale: Multiplier applied to viewBox dimensions and path coordinates.
 
     Returns:
         List of output file paths created.
@@ -37,15 +39,37 @@ def write_svg_files(
         filename = f"{base_name}_color_{hex_clean}.svg"
         filepath = output_dir / filename
 
-        _write_single_color_svg(filepath, layer["svg_paths"], layer["hex_color"], width, height)
+        _write_single_color_svg(
+            filepath, layer["svg_paths"], layer["hex_color"], width, height,
+            scale=scale,
+        )
         output_files.append(filepath)
 
     if combined:
         combined_path = output_dir / f"{base_name}_combined.svg"
-        _write_combined_svg(combined_path, layers, width, height)
+        _write_combined_svg(combined_path, layers, width, height, scale=scale)
         output_files.append(combined_path)
 
     return output_files
+
+
+def _fmt(val: float) -> str:
+    """Format a dimension value: integer string if whole, else 2 decimals."""
+    if val == int(val):
+        return str(int(val))
+    return f"{val:.2f}"
+
+
+def _scale_path(d: str, scale: float) -> str:
+    """Scale all numeric coordinates in an SVG path 'd' string."""
+    if scale == 1.0:
+        return d
+    import re
+
+    def _repl(m: re.Match) -> str:
+        return f"{float(m.group()) * scale:.2f}"
+
+    return re.sub(r"-?\d+\.\d+", _repl, d)
 
 
 def _write_single_color_svg(
@@ -54,17 +78,20 @@ def _write_single_color_svg(
     hex_color: str,
     width: int,
     height: int,
+    scale: float = 1.0,
 ) -> None:
     """Write one SVG file containing all paths for a single color."""
+    sw = width * scale
+    sh = height * scale
     dwg = svgwrite.Drawing(
         str(path),
-        size=(f"{width}px", f"{height}px"),
-        viewBox=f"0 0 {width} {height}",
+        size=(f"{_fmt(sw)}px", f"{_fmt(sh)}px"),
+        viewBox=f"0 0 {_fmt(sw)} {_fmt(sh)}",
     )
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
 
     for d in svg_paths:
-        dwg.add(dwg.path(d=d, fill=hex_color, fill_rule="evenodd", stroke="none"))
+        dwg.add(dwg.path(d=_scale_path(d, scale), fill=hex_color, fill_rule="evenodd", stroke="none"))
 
     dwg.save(pretty=True)
 
@@ -74,23 +101,24 @@ def _write_combined_svg(
     layers: list[dict],
     width: int,
     height: int,
+    scale: float = 1.0,
 ) -> None:
     """Write a combined SVG with one <g> group per color."""
+    sw = width * scale
+    sh = height * scale
     dwg = svgwrite.Drawing(
         str(path),
-        size=(f"{width}px", f"{height}px"),
-        viewBox=f"0 0 {width} {height}",
+        size=(f"{_fmt(sw)}px", f"{_fmt(sh)}px"),
+        viewBox=f"0 0 {_fmt(sw)} {_fmt(sh)}",
     )
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
 
     for layer in layers:
         hex_clean = layer["hex_color"].lstrip("#")
-        # Use id to encode both hex and color name (data- attributes fail svgwrite validation)
         group = dwg.g(id=f"color_{hex_clean}_{layer['color_name']}")
-
         for d in layer["svg_paths"]:
             group.add(
-                dwg.path(d=d, fill=layer["hex_color"], fill_rule="evenodd", stroke="none")
+                dwg.path(d=_scale_path(d, scale), fill=layer["hex_color"], fill_rule="evenodd", stroke="none")
             )
 
         dwg.add(group)

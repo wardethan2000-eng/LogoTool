@@ -4,3 +4,9 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+
+# Generated output
+*.svg
+*.png
+!logo2svg/**
+debug_output/

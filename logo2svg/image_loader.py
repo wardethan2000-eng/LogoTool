@@ -150,15 +150,3 @@ def _remove_bg_color(
 
     return ~bg_mask
 
-
-def _remove_fringe_pixels(fg_mask: np.ndarray, fringe_width: int = 1) -> np.ndarray:
-    """Erode the foreground mask to strip anti-aliased fringe at background boundary.
-
-    Removes the outermost ring of pixels where the logo blends into the
-    background. This prevents blended-color pixels from being included in
-    the color quantization.
-    """
-    mask_uint8 = fg_mask.astype(np.uint8)
-    kernel = np.ones((3, 3), np.uint8)
-    eroded = cv2.erode(mask_uint8, kernel, iterations=fringe_width)
-    return eroded.astype(bool)
