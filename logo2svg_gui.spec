@@ -3,7 +3,11 @@
 
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import (
+    collect_submodules,
+    collect_data_files,
+    collect_dynamic_libs,
+)
 
 block_cipher = None
 
@@ -11,6 +15,7 @@ block_cipher = None
 hidden_imports = (
     collect_submodules("logo2svg")
     + collect_submodules("sklearn")
+    + collect_submodules("PyQt6")
     + [
         "PIL",
         "PIL.Image",
@@ -23,19 +28,18 @@ hidden_imports = (
         "webcolors",
         "potrace",
         "click",
-        "PyQt6",
-        "PyQt6.QtCore",
-        "PyQt6.QtGui",
-        "PyQt6.QtWidgets",
-        "PyQt6.sip",
     ]
 )
+
+# PyQt6 needs its DLLs / .pyd files and Qt plugin data explicitly collected
+pyqt6_binaries = collect_dynamic_libs("PyQt6")
+pyqt6_datas = collect_data_files("PyQt6")
 
 a = Analysis(
     ["launcher.py"],
     pathex=["."],
-    binaries=[],
-    datas=[],
+    binaries=pyqt6_binaries,
+    datas=pyqt6_datas,
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
