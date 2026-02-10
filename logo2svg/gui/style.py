@@ -188,6 +188,20 @@ QPushButton:disabled {{
     border-color: {BORDER};
 }}
 
+/* -- Checkable (toggle) buttons -- */
+
+QPushButton:checked {{
+    background-color: {ACCENT};
+    border-color: {ACCENT};
+    color: #ffffff;
+    font-weight: 600;
+}}
+
+QPushButton:checked:hover {{
+    background-color: {ACCENT_HOVER};
+    border-color: {ACCENT_HOVER};
+}}
+
 /* -- Primary / accent buttons -- */
 
 QPushButton[cssClass="primary"] {{
@@ -280,19 +294,51 @@ QSpinBox:focus, QDoubleSpinBox:focus {{
 QSpinBox::up-button, QDoubleSpinBox::up-button {{
     subcontrol-origin: border;
     subcontrol-position: top right;
-    width: 20px;
+    width: 22px;
     border: none;
     background: transparent;
     border-top-right-radius: {RADIUS};
 }}
 
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover {{
+    background: {CARD_HOVER};
+}}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid {TEXT_SEC};
+    width: 0px;
+    height: 0px;
+}}
+
+QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled {{
+    border-bottom-color: {BORDER};
+}}
+
 QSpinBox::down-button, QDoubleSpinBox::down-button {{
     subcontrol-origin: border;
     subcontrol-position: bottom right;
-    width: 20px;
+    width: 22px;
     border: none;
     background: transparent;
     border-bottom-right-radius: {RADIUS};
+}}
+
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background: {CARD_HOVER};
+}}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {TEXT_SEC};
+    width: 0px;
+    height: 0px;
+}}
+
+QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {{
+    border-top-color: {BORDER};
 }}
 
 /* ================================================================
@@ -331,8 +377,9 @@ QCheckBox::indicator {{
 }}
 
 QCheckBox::indicator:checked {{
-    background-color: {ACCENT};
-    border-color: {ACCENT};
+    background-color: {SUCCESS};
+    border-color: {SUCCESS};
+    image: url(__ICONS_DIR__/check-white.svg);
 }}
 
 QCheckBox::indicator:hover {{

@@ -8,11 +8,85 @@ is loaded, a subtle drop-zone hint is displayed.
 from __future__ import annotations
 
 import numpy as np
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtCore import QRectF, QSize, Qt, QTimer
+from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from .style import BG, BORDER, SURFACE, TEXT_MUTED, TEXT_SEC
+from .style import ACCENT, BG, BORDER, SURFACE, TEXT_MUTED, TEXT_SEC
+
+
+class _ProcessingOverlay(QWidget):
+    """Semi-transparent overlay with a spinning arc shown during processing."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setVisible(False)
+
+        self._angle = 0
+        self._message = "Processing\u2026"
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.setInterval(25)
+
+    # -- public -----------------------------------------------------------
+
+    def show_message(self, msg: str) -> None:
+        self._message = msg
+        if self.parent():
+            self.setGeometry(self.parent().rect())
+        self.setVisible(True)
+        self.raise_()
+        self._timer.start()
+
+    def update_message(self, msg: str) -> None:
+        self._message = msg
+        self.update()
+
+    def hide_overlay(self) -> None:
+        self._timer.stop()
+        self.setVisible(False)
+
+    # -- internals --------------------------------------------------------
+
+    def _tick(self) -> None:
+        self._angle = (self._angle + 6) % 360
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Semi-transparent white overlay
+        painter.fillRect(self.rect(), QColor(255, 255, 255, 190))
+
+        cx = self.width() / 2
+        cy = self.height() / 2
+        r = 24
+        arc_rect = QRectF(cx - r, cy - r - 12, r * 2, r * 2)
+
+        # Light background ring
+        bg_pen = QPen(QColor(BORDER), 3.0)
+        bg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(bg_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(arc_rect)
+
+        # Spinning accent arc
+        accent_pen = QPen(QColor(ACCENT), 3.0)
+        accent_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(accent_pen)
+        painter.drawArc(arc_rect, int(self._angle * 16), int(270 * 16))
+
+        # Message text
+        painter.setPen(QColor(TEXT_SEC))
+        font = painter.font()
+        font.setPointSize(12)
+        font.setWeight(QFont.Weight.DemiBold)
+        painter.setFont(font)
+        text_rect = QRectF(0, cy + r + 2, self.width(), 30)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self._message)
+
+        painter.end()
 
 
 class PreviewPanel(QWidget):
@@ -32,7 +106,23 @@ class PreviewPanel(QWidget):
         self._current_pixmap: QPixmap | None = None
         self._show_empty_state()
 
+        # Processing overlay (child of this widget, covers entire panel)
+        self._overlay = _ProcessingOverlay(self)
+
     # -- public API -------------------------------------------------------
+
+    def show_processing(self, message: str = "Processing\u2026") -> None:
+        """Show a centered spinner overlay with *message*."""
+        self._overlay.show_message(message)
+
+    def update_processing_message(self, message: str) -> None:
+        """Update the overlay text while it's visible."""
+        if self._overlay.isVisible():
+            self._overlay.update_message(message)
+
+    def hide_processing(self) -> None:
+        """Hide the spinner overlay."""
+        self._overlay.hide_overlay()
 
     def set_composite(self, rgba: np.ndarray) -> None:
         """Display an (H, W, 4) RGBA uint8 numpy array.
@@ -75,6 +165,9 @@ class PreviewPanel(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._fit_pixmap()
+        # Keep overlay sized to match panel
+        if self._overlay.isVisible():
+            self._overlay.setGeometry(self.rect())
 
     # -- internals --------------------------------------------------------
 

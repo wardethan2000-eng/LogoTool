@@ -1,7 +1,8 @@
 """Application entry-point for the QuickLayer GUI.
 
-Sets up the Fusion theme with a modern light palette, applies the
-central QSS stylesheet, and launches the main window.
+Shows a lightweight splash screen instantly, then lazy-loads the heavy
+pipeline dependencies (OpenCV, scikit-learn, etc.) so the user sees
+feedback within a second of launch.
 """
 
 from __future__ import annotations
@@ -9,25 +10,50 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QIcon, QPalette
-from PyQt6.QtWidgets import QApplication
 
-from .main_window import MainWindow
-from .style import (
-    ACCENT,
-    BG,
-    CARD,
-    STYLESHEET,
-    SURFACE,
-    TEXT,
-    TEXT_MUTED,
-    TEXT_SEC,
-)
+# ── Splash screen (only needs basic PyQt6 — no heavy deps) ──────────
+
+def _create_splash_pixmap():
+    """Create a simple branded splash pixmap."""
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap
+
+    w, h = 400, 200
+    pm = QPixmap(w, h)
+    pm.fill(QColor("#ffffff"))
+
+    painter = QPainter(pm)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # Subtle border
+    painter.setPen(QColor("#d1d5db"))
+    painter.drawRoundedRect(1, 1, w - 2, h - 2, 10, 10)
+
+    # App name
+    font = QFont("Segoe UI", 26, QFont.Weight.Bold)
+    painter.setFont(font)
+    painter.setPen(QColor("#111827"))
+    painter.drawText(pm.rect().adjusted(0, -18, 0, 0),
+                     Qt.AlignmentFlag.AlignCenter, "QuickLayer")
+
+    # Loading text
+    font = QFont("Segoe UI", 11)
+    painter.setFont(font)
+    painter.setPen(QColor("#9ca3af"))
+    painter.drawText(pm.rect().adjusted(0, 36, 0, 0),
+                     Qt.AlignmentFlag.AlignCenter, "Loading components\u2026")
+
+    painter.end()
+    return pm
 
 
-def _apply_light_palette(app: QApplication) -> None:
+# ── Palette (needs style tokens — still lightweight) ─────────────────
+
+def _apply_light_palette(app) -> None:
     """Set a light QPalette as baseline for widgets that ignore QSS."""
+    from PyQt6.QtGui import QColor, QPalette
+    from .style import ACCENT, BG, CARD, SURFACE, TEXT, TEXT_MUTED, TEXT_SEC
+
     p = QPalette()
     p.setColor(QPalette.ColorRole.Window, QColor(BG))
     p.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
@@ -44,7 +70,6 @@ def _apply_light_palette(app: QApplication) -> None:
     p.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
     p.setColor(QPalette.ColorRole.PlaceholderText, QColor(TEXT_MUTED))
 
-    # Disabled colours
     p.setColor(
         QPalette.ColorGroup.Disabled,
         QPalette.ColorRole.WindowText,
@@ -63,6 +88,8 @@ def _apply_light_palette(app: QApplication) -> None:
     app.setPalette(p)
 
 
+# ── Main entry point ─────────────────────────────────────────────────
+
 def run_gui(file_path: str | None = None) -> int:
     """Launch the QuickLayer GUI.  Optionally open *file_path* immediately."""
     # Tell Windows this is its own app so the taskbar icon works
@@ -74,13 +101,32 @@ def run_gui(file_path: str | None = None) -> int:
     except Exception:
         pass
 
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QIcon
+    from PyQt6.QtWidgets import QApplication, QSplashScreen
+
     app = QApplication(sys.argv)
     app.setApplicationName("QuickLayer")
     app.setOrganizationName("QuickLayer")
     app.setStyle("Fusion")
 
+    # ── Show splash IMMEDIATELY, before heavy imports ──
+    splash = QSplashScreen(_create_splash_pixmap(),
+                           Qt.WindowType.WindowStaysOnTopHint)
+    splash.show()
+    app.processEvents()
+
+    # ── Heavy imports happen here (cv2, sklearn, etc.) ──
+    from .main_window import MainWindow
+    from .style import STYLESHEET
+
     _apply_light_palette(app)
-    app.setStyleSheet(STYLESHEET)
+
+    # Inject correct icons directory into the stylesheet
+    icons_dir = str(
+        Path(__file__).resolve().parent.parent / "icons"
+    ).replace("\\", "/")
+    app.setStyleSheet(STYLESHEET.replace("__ICONS_DIR__", icons_dir))
 
     # Set application icon (taskbar / title-bar)
     icon_path = Path(__file__).resolve().parent.parent / "icons" / "quicklayer.ico"
@@ -89,6 +135,7 @@ def run_gui(file_path: str | None = None) -> int:
 
     window = MainWindow()
     window.show()
+    splash.finish(window)
 
     if file_path:
         window.open_file(file_path)

@@ -26,7 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QColor, QDragEnterEvent, QDropEvent
+from PyQt6.QtGui import QAction, QColor, QDragEnterEvent, QDropEvent, QIcon
 from PyQt6.QtWidgets import (
     QColorDialog,
     QFileDialog,
@@ -63,6 +63,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("QuickLayer")
         self.resize(1280, 800)
         self.setAcceptDrops(True)
+
+        # Window icon (taskbar + title bar)
+        icon_path = Path(__file__).resolve().parent.parent / "icons" / "quicklayer.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         # Session & settings
         self._session = Session()
@@ -152,21 +157,29 @@ class MainWindow(QMainWindow):
         hbar.addWidget(self._vsep())
         hbar.addSpacing(8)
 
-        # Colors control
+        # Colors control with Auto toggle + manual spin box
         clr_label = QLabel("Colors")
         clr_label.setStyleSheet(f"color: {TEXT_SEC}; font-size: 13px;")
         hbar.addWidget(clr_label)
 
+        self._auto_btn = QPushButton("Auto")
+        self._auto_btn.setCheckable(True)
+        self._auto_btn.setChecked(True)
+        self._auto_btn.setFixedHeight(32)
+        self._auto_btn.setToolTip("Auto-detect number of colors")
+        self._auto_btn.toggled.connect(self._on_auto_toggled)
+        hbar.addWidget(self._auto_btn)
+
         self._color_spin = QSpinBox()
-        self._color_spin.setRange(0, 20)
-        self._color_spin.setSpecialValueText("Auto")
-        self._color_spin.setValue(0)
+        self._color_spin.setRange(2, 20)
+        self._color_spin.setValue(4)
         self._color_spin.setToolTip(
-            "Number of colors for quantization (0 = auto-detect)"
+            "Number of colors for quantization"
         )
-        self._color_spin.setFixedWidth(80)
+        self._color_spin.setFixedWidth(68)
         self._color_spin.setFixedHeight(32)
-        self._color_spin.valueChanged.connect(self._on_requantize)
+        self._color_spin.setEnabled(False)
+        self._color_spin.valueChanged.connect(self._on_color_count_changed)
         hbar.addWidget(self._color_spin)
 
         hbar.addStretch()
@@ -295,7 +308,7 @@ class MainWindow(QMainWindow):
             bg_color=self._bg_color or None,
             remove_tm=self._remove_tm,
         )
-        worker.progress.connect(self._status_label.setText)
+        worker.progress.connect(self._on_progress)
         worker.finished.connect(self._on_load_done)
         worker.error.connect(self._on_worker_error)
         self._start_worker(worker)
@@ -322,7 +335,7 @@ class MainWindow(QMainWindow):
             return
         self._set_busy(True, "Exporting\u2026")
         worker = ExportWorker(self._session, out_dir, combined=True)
-        worker.progress.connect(self._status_label.setText)
+        worker.progress.connect(self._on_progress)
         worker.finished.connect(self._on_export_done)
         worker.error.connect(self._on_worker_error)
         self._start_worker(worker)
@@ -367,11 +380,16 @@ class MainWindow(QMainWindow):
         if changed and self._session.is_loaded:
             self._run_quantize()
 
-    def _on_requantize(self, value: int) -> None:
-        """Spinner value changed -> re-quantize."""
-        if not self._session.is_loaded:
-            return
-        self._run_quantize()
+    def _on_auto_toggled(self, checked: bool) -> None:
+        """Auto button toggled."""
+        self._color_spin.setEnabled(not checked)
+        if checked and self._session.is_loaded:
+            self._run_quantize()
+
+    def _on_color_count_changed(self, _value: int) -> None:
+        """Manual color count spinner changed."""
+        if not self._auto_btn.isChecked() and self._session.is_loaded:
+            self._run_quantize()
 
     # =================================================================
     #  Layer-panel signal handlers
@@ -419,6 +437,12 @@ class MainWindow(QMainWindow):
 
     def _on_quantize_done(self, _result) -> None:
         self._set_busy(False, "Quantized")
+        # Show auto-detected count in the spin box (without re-triggering)
+        if self._auto_btn.isChecked():
+            count = self._session.get_layer_count()
+            self._color_spin.blockSignals(True)
+            self._color_spin.setValue(max(2, count))
+            self._color_spin.blockSignals(False)
         self._refresh_layers()
         self._run_trace()
 
@@ -444,11 +468,10 @@ class MainWindow(QMainWindow):
     def _run_quantize(self) -> None:
         if not self._session.is_loaded:
             return
-        n = self._color_spin.value()
-        n_colors = n if n > 0 else None
+        n_colors = None if self._auto_btn.isChecked() else self._color_spin.value()
         self._set_busy(True, "Quantizing\u2026")
         worker = QuantizeWorker(self._session, n_colors=n_colors)
-        worker.progress.connect(self._status_label.setText)
+        worker.progress.connect(self._on_progress)
         worker.finished.connect(self._on_quantize_done)
         worker.error.connect(self._on_worker_error)
         self._start_worker(worker)
@@ -458,7 +481,7 @@ class MainWindow(QMainWindow):
             return
         self._set_busy(True, "Tracing\u2026")
         worker = TraceWorker(self._session)
-        worker.progress.connect(self._status_label.setText)
+        worker.progress.connect(self._on_progress)
         worker.finished.connect(self._on_trace_done)
         worker.error.connect(self._on_worker_error)
         self._start_worker(worker)
@@ -473,11 +496,18 @@ class MainWindow(QMainWindow):
         else:
             self._preview.clear()
 
+    def _on_progress(self, message: str) -> None:
+        """Update both the status label and the preview overlay."""
+        self._status_label.setText(message)
+        self._preview.update_processing_message(message)
+
     def _set_busy(self, busy: bool, status: str = "") -> None:
         if busy:
+            self._preview.show_processing(status)
             self._progress.show()
             self._status_label.setText(status)
         else:
+            self._preview.hide_processing()
             self._progress.hide()
             if status:
                 self._status_label.setText(status)

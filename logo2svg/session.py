@@ -148,6 +148,8 @@ class Session:
         """
         self._path = Path(path)
         self._image, self._fg_mask = load_image(self._path, bg_color)
+        # Pad to a square canvas so the output is never rectangular
+        self._pad_to_square()
         # Reset downstream
         self._labels = None
         self._centers_rgb = None
@@ -428,6 +430,35 @@ class Session:
             layer.setdefault("visible", True)
 
     # -- helpers from pipeline.py -----------------------------------------
+
+    def _pad_to_square(self) -> None:
+        """Pad image and mask to a square canvas (no cropping, no downscale).
+
+        Uses the detected background colour for the padding area.
+        """
+        h, w = self._image.shape[:2]
+        if h == w:
+            return
+
+        size = max(h, w)
+
+        # Determine background colour from non-foreground pixels
+        bg_pixels = self._image[~self._fg_mask]
+        if len(bg_pixels) > 0:
+            bg_color = np.median(bg_pixels, axis=0).astype(np.uint8)
+        else:
+            bg_color = np.array([255, 255, 255], dtype=np.uint8)
+
+        padded_image = np.full((size, size, 3), bg_color, dtype=np.uint8)
+        padded_mask = np.zeros((size, size), dtype=bool)
+
+        y_off = (size - h) // 2
+        x_off = (size - w) // 2
+        padded_image[y_off:y_off + h, x_off:x_off + w] = self._image
+        padded_mask[y_off:y_off + h, x_off:x_off + w] = self._fg_mask
+
+        self._image = padded_image
+        self._fg_mask = padded_mask
 
     @staticmethod
     def _erode_mask(mask: np.ndarray, iterations: int = 1) -> np.ndarray:

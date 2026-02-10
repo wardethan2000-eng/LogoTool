@@ -5,7 +5,6 @@ from __future__ import annotations
 import cv2
 import numpy as np
 from sklearn.cluster import KMeans, MiniBatchKMeans
-from sklearn.metrics import silhouette_score
 
 
 def quantize_colors(
@@ -80,10 +79,16 @@ def quantize_colors(
 def _auto_detect_k(
     pixels_lab: np.ndarray, max_k: int, sample_limit: int
 ) -> int:
-    """Try k=2..max_k and return k with the highest silhouette score.
+    """Auto-detect the number of distinct colours in a logo image.
 
-    Uses subsampling for performance since silhouette scoring is O(n^2).
-    Returns 1 if the foreground is essentially a single color.
+    Uses a "start generous, merge similar" strategy that works much
+    better for logos than plain silhouette scoring:
+
+    1.  Cluster with a generous initial *k* (up to ``max_k``).
+    2.  Discard negligibly small clusters (< 1 % of foreground).
+    3.  Iteratively merge the two closest cluster centres until all
+        remaining centres differ by at least ``MIN_DELTA_E`` in standard
+        CIELAB space (≈ 15 ΔE, clearly distinguishable colours).
     """
     n = len(pixels_lab)
 
@@ -98,32 +103,55 @@ def _auto_detect_k(
     else:
         sample = pixels_lab
 
-    best_k = 2
-    best_score = -1.0
+    # --- Step 1: generous initial clustering ---
+    n_unique = len(np.unique(sample.reshape(-1, 3), axis=0))
+    initial_k = min(max_k, n_unique, max(8, max_k))
+    initial_k = max(2, min(initial_k, len(sample) // 10))
 
-    for k in range(2, min(max_k + 1, len(sample))):
-        kmeans = MiniBatchKMeans(n_clusters=k, n_init=5, random_state=42, batch_size=5000)
-        cluster_labels = kmeans.fit_predict(sample)
+    kmeans = MiniBatchKMeans(
+        n_clusters=initial_k, n_init=10, random_state=42, batch_size=5000
+    )
+    labels = kmeans.fit_predict(sample)
+    centers = kmeans.cluster_centers_.copy()
 
-        # Need at least 2 distinct labels for silhouette score
-        if len(np.unique(cluster_labels)) < 2:
-            continue
+    # --- Step 2: drop negligibly small clusters ---
+    cluster_sizes = np.bincount(labels, minlength=initial_k)
+    min_pixels = max(50, int(0.01 * len(sample)))
+    keep = cluster_sizes >= min_pixels
+    if np.sum(keep) >= 1:
+        centers = centers[keep]
+    if len(centers) <= 1:
+        return max(1, len(centers))
 
-        # Subsample further for silhouette scoring if needed
-        sil_sample_size = min(10000, len(sample))
-        if len(sample) > sil_sample_size:
-            sil_idx = np.random.RandomState(42).choice(
-                len(sample), sil_sample_size, replace=False
-            )
-            score = silhouette_score(sample[sil_idx], cluster_labels[sil_idx])
-        else:
-            score = silhouette_score(sample, cluster_labels)
+    # --- Step 3: convert centres to standard CIELAB for perceptual distance ---
+    std = centers.copy()
+    std[:, 0] = std[:, 0] * (100.0 / 255.0)   # L: 0-255 → 0-100
+    std[:, 1] = std[:, 1] - 128.0               # a: 0-255 → −128..127
+    std[:, 2] = std[:, 2] - 128.0               # b: 0-255 → −128..127
 
-        if score > best_score:
-            best_score = score
-            best_k = k
+    # --- Step 4: merge until all pairs are ≥ MIN_DELTA_E apart ---
+    MIN_DELTA_E = 15.0
 
-    return best_k
+    while len(std) > 1:
+        # Find the two closest centres
+        min_dist = float("inf")
+        merge_i, merge_j = 0, 1
+        nc = len(std)
+        for i in range(nc):
+            for j in range(i + 1, nc):
+                d = float(np.linalg.norm(std[i] - std[j]))
+                if d < min_dist:
+                    min_dist = d
+                    merge_i, merge_j = i, j
+
+        if min_dist >= MIN_DELTA_E:
+            break  # all remaining centres are distinct enough
+
+        # Merge: weighted average (approximate — just average here)
+        std[merge_i] = (std[merge_i] + std[merge_j]) / 2.0
+        std = np.delete(std, merge_j, axis=0)
+
+    return max(1, len(std))
 
 
 def _reassign_boundary_pixels(
