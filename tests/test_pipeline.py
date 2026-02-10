@@ -53,7 +53,6 @@ def test_pipeline_two_color_logo(tmp_path):
 
     config = PipelineConfig(
         colors=2,
-        tolerance=2.0,
         output_dir=tmp_path,
         min_area=50,
     )
@@ -81,7 +80,6 @@ def test_pipeline_with_combined(tmp_path):
 
     config = PipelineConfig(
         colors=2,
-        tolerance=2.0,
         output_dir=tmp_path,
         min_area=50,
         combined=True,
@@ -108,7 +106,6 @@ def test_pipeline_with_preview(tmp_path):
 
     config = PipelineConfig(
         colors=2,
-        tolerance=2.0,
         output_dir=tmp_path,
         min_area=50,
         preview=True,
@@ -128,7 +125,6 @@ def test_pipeline_three_color_auto_detect(tmp_path):
 
     config = PipelineConfig(
         colors=3,
-        tolerance=2.0,
         output_dir=tmp_path,
         min_area=50,
     )
@@ -146,7 +142,6 @@ def test_pipeline_svgs_share_viewbox(tmp_path):
 
     config = PipelineConfig(
         colors=2,
-        tolerance=2.0,
         output_dir=tmp_path,
         min_area=50,
     )
@@ -168,17 +163,16 @@ def test_pipeline_svgs_share_viewbox(tmp_path):
     assert viewboxes.pop() == "0 0 200 200"
 
 
-def test_pipeline_with_smooth_zero(tmp_path):
-    """Pipeline should work with smoothing explicitly disabled."""
+def test_pipeline_with_potrace_sharp(tmp_path):
+    """Pipeline should work with sharp alphamax (more corners)."""
     png_path = tmp_path / "test_logo.png"
     _create_two_color_logo(png_path)
 
     config = PipelineConfig(
         colors=2,
-        tolerance=2.0,
         output_dir=tmp_path,
         min_area=50,
-        smooth=0.0,
+        alphamax=0.0,
     )
 
     output_files = process_single(png_path, config)
@@ -189,17 +183,16 @@ def test_pipeline_with_smooth_zero(tmp_path):
         assert "<path" in content
 
 
-def test_pipeline_with_high_smooth(tmp_path):
-    """Pipeline should work with high smoothing value."""
+def test_pipeline_with_potrace_smooth(tmp_path):
+    """Pipeline should work with high alphamax (more curves)."""
     png_path = tmp_path / "test_logo.png"
     _create_two_color_logo(png_path)
 
     config = PipelineConfig(
         colors=2,
-        tolerance=2.0,
         output_dir=tmp_path,
         min_area=50,
-        smooth=3.0,
+        alphamax=1.334,
     )
 
     output_files = process_single(png_path, config)
@@ -208,3 +201,86 @@ def test_pipeline_with_high_smooth(tmp_path):
     for svg_file in svg_files:
         content = svg_file.read_text()
         assert "<svg" in content
+
+
+def _create_logo_with_white_foreground(path: Path) -> None:
+    """Create a logo with white elements on a white background.
+
+    Layout: 200x200, white bg, blue rectangle (40:160, 40:160)
+    with a white rectangle (70:130, 70:130) fully inside the blue.
+    The interior white must be preserved as foreground, not removed
+    as background.
+    """
+    size = 200
+    img = np.full((size, size, 3), 255, dtype=np.uint8)  # White background
+
+    # Blue rectangle
+    img[40:160, 40:160, :] = [0, 0, 200]
+
+    # White rectangle inside the blue (interior white foreground)
+    img[70:130, 70:130, :] = [255, 255, 255]
+
+    Image.fromarray(img, "RGB").save(str(path))
+
+
+def test_pipeline_white_foreground_preserved(tmp_path):
+    """White foreground elements inside a logo must not be removed as background."""
+    png_path = tmp_path / "test_logo.png"
+    _create_logo_with_white_foreground(png_path)
+
+    config = PipelineConfig(
+        colors=2,
+        output_dir=tmp_path,
+        min_area=10,
+    )
+
+    output_files = process_single(png_path, config)
+    svg_files = [f for f in output_files if f.suffix == ".svg"]
+
+    # Should produce 2 SVGs: blue and white
+    assert len(svg_files) == 2
+
+    # One SVG should have a near-white fill color
+    import re
+    color_hexes = []
+    for f in svg_files:
+        match = re.search(r'fill="#([0-9A-Fa-f]{6})"', f.read_text())
+        if match:
+            hex_str = match.group(1)
+            r = int(hex_str[0:2], 16)
+            g = int(hex_str[2:4], 16)
+            b = int(hex_str[4:6], 16)
+            color_hexes.append((r, g, b))
+
+    has_white_ish = any(r > 200 and g > 200 and b > 200 for r, g, b in color_hexes)
+    assert has_white_ish, f"Expected a near-white color SVG, got: {color_hexes}"
+
+
+def _create_single_color_logo(path: Path) -> None:
+    """Create a single-color logo (black shape on transparent bg)."""
+    size = 200
+    img = np.zeros((size, size, 4), dtype=np.uint8)  # RGBA, transparent
+
+    # Black rectangle
+    img[50:150, 50:150, 0] = 30   # R
+    img[50:150, 50:150, 1] = 30   # G
+    img[50:150, 50:150, 2] = 30   # B
+    img[50:150, 50:150, 3] = 255  # A
+
+    Image.fromarray(img, "RGBA").save(str(path))
+
+
+def test_pipeline_single_color_logo(tmp_path):
+    """A single-color logo should produce exactly 1 SVG."""
+    png_path = tmp_path / "test_logo.png"
+    _create_single_color_logo(png_path)
+
+    config = PipelineConfig(
+        colors=1,
+        output_dir=tmp_path,
+        min_area=10,
+    )
+
+    output_files = process_single(png_path, config)
+    svg_files = [f for f in output_files if f.suffix == ".svg"]
+    assert len(svg_files) == 1

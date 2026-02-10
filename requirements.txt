@@ -7,3 +7,4 @@ webcolors>=1.13
 click>=8.1
 scipy>=1.10
 pytest>=7.0
+potracer>=0.1

@@ -12,7 +12,47 @@ from .image_loader import load_image
 from .layer_separator import separate_layers
 from .quantizer import quantize_colors
 from .svg_writer import write_preview, write_svg_files
-from .tracer import find_contours, trace_to_svg_paths
+from .tracer import trace_mask_to_svg_paths
+
+
+def _erode_mask(mask: np.ndarray, iterations: int = 1) -> np.ndarray:
+    """Erode a boolean mask to strip anti-aliased fringe at background boundary."""
+    import cv2
+    mask_uint8 = mask.astype(np.uint8)
+    kernel = np.ones((3, 3), np.uint8)
+    eroded = cv2.erode(mask_uint8, kernel, iterations=iterations)
+    return eroded.astype(bool)
+
+
+def _recover_fringe_pixels(
+    image: np.ndarray,
+    labels: np.ndarray,
+    centers_rgb: np.ndarray,
+    fg_mask: np.ndarray,
+    fg_mask_eroded: np.ndarray,
+) -> np.ndarray:
+    """Assign fringe pixels (in fg_mask but not fg_mask_eroded) to nearest cluster.
+
+    Fringe pixels are excluded from K-means to prevent anti-aliased colors
+    from creating spurious clusters, but we recover them here by assigning
+    each to the nearest cluster center in RGB space.
+    """
+    fringe = fg_mask & ~fg_mask_eroded
+    if not np.any(fringe):
+        return labels
+
+    fringe_pixels = image[fringe].astype(np.float64)
+    centers = centers_rgb.astype(np.float64)
+    # Distance to each cluster center
+    distances = np.linalg.norm(
+        fringe_pixels[:, np.newaxis, :] - centers[np.newaxis, :, :],
+        axis=2,
+    )
+    nearest = distances.argmin(axis=1).astype(np.int32)
+
+    labels = labels.copy()
+    labels[fringe] = nearest
+    return labels
 
 
 @dataclass
@@ -20,14 +60,14 @@ class PipelineConfig:
     """All user-configurable parameters for a single conversion run."""
 
     colors: int | None = None
-    tolerance: float = 2.0
     output_dir: Path = field(default_factory=lambda: Path("."))
     min_area: int = 100
     combined: bool = False
     bg_color: str | None = None
     preview: bool = False
-    simplify: float | None = None
-    smooth: float = 1.4
+    # Potrace parameters
+    alphamax: float = 1.0
+    opttolerance: float = 0.2
 
 
 def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
@@ -57,25 +97,31 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
         return []
 
     # Stage 2: Quantize colors
+    # Erode the fg_mask for K-means only — this prevents anti-aliased
+    # boundary pixels from creating spurious color clusters.
     click.echo("  Quantizing colors...")
-    labels, centers_rgb = quantize_colors(image, fg_mask, n_colors=config.colors)
+    fg_mask_eroded = _erode_mask(fg_mask, iterations=1)
+    labels, centers_rgb = quantize_colors(image, fg_mask_eroded, n_colors=config.colors)
     n_colors = len(centers_rgb)
     click.echo(f"  Detected {n_colors} colors")
 
-    # Stage 3: Separate into per-color masks
+    # Recover fringe pixels by assigning them to their nearest cluster
+    labels = _recover_fringe_pixels(image, labels, centers_rgb, fg_mask, fg_mask_eroded)
+
+    # Stage 3: Separate into per-color masks (using FULL fg_mask, not eroded)
     click.echo("  Separating color layers...")
     layers = separate_layers(labels, centers_rgb, fg_mask, config.min_area)
     click.echo(f"  Created {len(layers)} color layers")
 
-    # Stage 4: Trace contours to SVG paths
-    click.echo("  Tracing contours to vector paths...")
+    # Stage 4: Trace masks to SVG paths (Potrace)
+    click.echo("  Tracing masks to vector paths (potrace)...")
     for layer in layers:
-        contours, hierarchy = find_contours(layer["mask"], smooth=config.smooth)
-        layer["svg_paths"] = trace_to_svg_paths(
-            contours, hierarchy,
-            tolerance=config.tolerance,
-            simplify=config.simplify,
-            smooth=config.smooth,
+        layer["svg_paths"] = trace_mask_to_svg_paths(
+            layer["mask"],
+            turdsize=2,
+            alphamax=config.alphamax,
+            opticurve=True,
+            opttolerance=config.opttolerance,
         )
         n_paths = len(layer["svg_paths"])
         click.echo(f"    {layer['hex_color']} ({layer['color_name']}): {n_paths} paths")
@@ -101,26 +147,33 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
     return output_files
 
 
+# Supported image file extensions (Pillow can load all of these)
+SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+
+
 def process_batch(input_dir: Path, config: PipelineConfig) -> list[Path]:
-    """Process all PNG files in a directory.
+    """Process all image files (PNG, JPEG) in a directory.
 
     Returns:
         Combined list of all output file paths created.
     """
-    png_files = sorted(input_dir.glob("*.png")) + sorted(input_dir.glob("*.PNG"))
-    if not png_files:
-        click.echo(f"No PNG files found in {input_dir}")
+    image_files = sorted(
+        f for f in input_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
+    if not image_files:
+        click.echo(f"No image files found in {input_dir}")
         return []
 
-    click.echo(f"Batch processing {len(png_files)} PNG files from {input_dir}")
+    click.echo(f"Batch processing {len(image_files)} image files from {input_dir}")
     all_outputs: list[Path] = []
 
-    for png_file in png_files:
+    for image_file in image_files:
         try:
-            outputs = process_single(png_file, config)
+            outputs = process_single(image_file, config)
             all_outputs.extend(outputs)
         except Exception as e:
-            click.echo(f"  Error processing {png_file.name}: {e}")
+            click.echo(f"  Error processing {image_file.name}: {e}")
 
     click.echo(f"\nBatch complete. {len(all_outputs)} files created.")
     return all_outputs

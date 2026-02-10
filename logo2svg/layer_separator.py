@@ -41,6 +41,11 @@ def separate_layers(
         # Morphological cleanup
         mask = _morphological_cleanup(mask)
 
+        # Re-clamp to foreground: morph close can expand the mask beyond
+        # the original foreground boundary, which would re-create background
+        # rectangles in the SVG output.
+        mask = mask & (fg_mask.astype(np.uint8) * 255)
+
         # Remove small connected components
         mask = _filter_small_components(mask, min_area)
 
@@ -57,23 +62,78 @@ def separate_layers(
             "hex_color": hex_color,
             "color_name": color_name,
             "mask": mask,
+            "cluster_idx": k,
         })
+
+    # Resolve any pixel overlaps created by morphological expansion
+    layers = _resolve_overlaps(layers, labels, fg_mask)
 
     return layers
 
 
-def _morphological_cleanup(mask: np.ndarray, kernel_size: int = 5) -> np.ndarray:
-    """Apply morphological close (fill tiny holes) then open (remove speckles).
+def _morphological_cleanup(mask: np.ndarray, kernel_size: int = 3) -> np.ndarray:
+    """Apply morphological close to fill tiny holes in the mask.
 
-    Uses a 5x5 kernel by default for effective cleanup at typical logo resolutions.
-    Close uses 2 iterations to better fill gaps at color boundaries.
+    Uses only MORPH_CLOSE (dilate then erode) with a 3×3 kernel.  The
+    previous close+open approach included an erode step (MORPH_OPEN) that
+    destroyed thin features — eating 10-15 % of narrow strokes.  Speckle
+    removal is handled separately by _filter_small_components.
     """
     kernel = np.ones((kernel_size, kernel_size), np.uint8)
-    # Close: dilate then erode — fills small gaps within the mask
-    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    # Open: erode then dilate — removes small noise specks
-    opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel, iterations=1)
-    return opened
+    # Close: dilate then erode — fills small 1-2px gaps within the mask
+    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+    return closed
+
+
+def _resolve_overlaps(
+    layers: list[dict],
+    labels: np.ndarray,
+    fg_mask: np.ndarray,
+) -> list[dict]:
+    """Ensure each pixel belongs to at most one layer.
+
+    After morphological cleanup, layer masks can overlap.  For overlapping
+    pixels, we keep the assignment that matches the original K-means label.
+    This prevents one color from bleeding into another color's territory.
+    """
+    if len(layers) <= 1:
+        return layers
+
+    h, w = fg_mask.shape
+    n_layers = len(layers)
+
+    # Stack masks: (n_layers, h, w)
+    mask_stack = np.stack([layer["mask"] > 0 for layer in layers], axis=0)
+
+    # Coverage count per pixel
+    coverage = mask_stack.sum(axis=0)
+
+    # Find overlap pixels (coverage > 1)
+    overlap_mask = coverage > 1
+
+    if not np.any(overlap_mask):
+        return layers
+
+    # Build mapping: original cluster index → layer index
+    cluster_to_layer = {}
+    for li, layer in enumerate(layers):
+        cluster_to_layer[layer["cluster_idx"]] = li
+
+    # For overlapping pixels, resolve by original K-means label
+    resolved = np.full((h, w), -1, dtype=np.int32)
+    for cluster_idx, layer_idx in cluster_to_layer.items():
+        resolved[labels == cluster_idx] = layer_idx
+
+    # Remove overlapping pixels from layers that don't match the original label
+    for li in range(n_layers):
+        # Pixels where this layer's mask is set AND there's overlap
+        overlap_in_layer = overlap_mask & mask_stack[li]
+        # Remove pixel from this layer if the original label says a different layer
+        should_remove = overlap_in_layer & (resolved != li)
+        if np.any(should_remove):
+            layers[li]["mask"][should_remove] = 0
+
+    return layers
 
 
 def _filter_small_components(mask: np.ndarray, min_area: int) -> np.ndarray:

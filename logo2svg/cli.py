@@ -17,10 +17,6 @@ from .pipeline import PipelineConfig, process_batch, process_single
     help="Number of colors to extract. Auto-detected if omitted (typically 2-5 for logos).",
 )
 @click.option(
-    "--tolerance", type=float, default=2.0,
-    help="Bezier curve fitting tolerance in pixels. Lower = tighter fit, higher = smoother.",
-)
-@click.option(
     "--output-dir", type=click.Path(), default=None,
     help="Output directory for SVG files. Defaults to current directory.",
 )
@@ -42,31 +38,31 @@ from .pipeline import PipelineConfig, process_batch, process_single
 )
 @click.option(
     "--batch", is_flag=True, default=False,
-    help="Treat INPUT_PATH as a directory and process all PNGs in it.",
+    help="Treat INPUT_PATH as a directory and process all image files (PNG, JPEG) in it.",
 )
 @click.option(
-    "--simplify", type=float, default=None,
-    help="Simplification factor (0.0-1.0). Higher values reduce path complexity.",
+    "--alphamax", type=float, default=1.0,
+    help="Potrace corner detection threshold (0.0-1.334). "
+         "Lower = more corners (sharper). Higher = more curves (smoother). Default: 1.0.",
 )
 @click.option(
-    "--smooth", type=float, default=1.4,
-    help="Gaussian smoothing sigma for mask edges before tracing. "
-         "Higher = smoother curves. 0 disables smoothing. Default: 1.4.",
+    "--opttolerance", type=float, default=0.2,
+    help="Potrace curve optimisation tolerance. "
+         "Lower = more faithful. Higher = fewer bezier segments. Default: 0.2.",
 )
 def main(
     input_path: str,
     colors: int | None,
-    tolerance: float,
     output_dir: str | None,
     min_area: int,
     combined: bool,
     bg_color: str | None,
     preview: bool,
     batch: bool,
-    simplify: float | None,
-    smooth: float,
+    alphamax: float,
+    opttolerance: float,
 ) -> None:
-    """Convert a PNG logo into color-separated SVG files for 3D printing.
+    """Convert a PNG or JPEG logo into color-separated SVG files for 3D printing.
 
     Each distinct color in the logo is output as its own SVG file containing
     only the vector paths for that color. The SVGs share the same viewBox so
@@ -86,17 +82,7 @@ def main(
         click.echo("Error: --colors must be at least 1.", err=True)
         sys.exit(1)
 
-    if simplify is not None and not (0.0 <= simplify <= 1.0):
-        click.echo("Error: --simplify must be between 0.0 and 1.0.", err=True)
-        sys.exit(1)
 
-    if tolerance <= 0:
-        click.echo("Error: --tolerance must be positive.", err=True)
-        sys.exit(1)
-
-    if smooth < 0:
-        click.echo("Error: --smooth must be non-negative.", err=True)
-        sys.exit(1)
 
     # Resolve output directory
     if output_dir is not None:
@@ -108,14 +94,13 @@ def main(
 
     config = PipelineConfig(
         colors=colors,
-        tolerance=tolerance,
         output_dir=out_path,
         min_area=min_area,
         combined=combined,
         bg_color=bg_color,
         preview=preview,
-        simplify=simplify,
-        smooth=smooth,
+        alphamax=alphamax,
+        opttolerance=opttolerance,
     )
 
     try:

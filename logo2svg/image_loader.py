@@ -51,6 +51,17 @@ def load_image(
         fg_mask = _remove_bg_color(image, bg_rgb, tolerance=30)
     elif has_alpha:
         fg_mask = _detect_bg_from_alpha(alpha, threshold=10)
+        # If the alpha channel is useless (all opaque or all transparent),
+        # fall through to corner-based detection instead.
+        fg_ratio = np.count_nonzero(fg_mask) / fg_mask.size
+        if fg_ratio > 0.99 or fg_ratio < 0.01:
+            bg_rgb = _detect_bg_from_corners(image)
+            if bg_rgb is not None:
+                fg_mask = _remove_bg_color(image, bg_rgb, tolerance=30)
+            elif fg_ratio > 0.99:
+                # Alpha says everything is foreground and corners disagree —
+                # keep the all-foreground mask as last resort.
+                pass
     else:
         bg_rgb = _detect_bg_from_corners(image)
         if bg_rgb is not None:
@@ -58,9 +69,6 @@ def load_image(
         else:
             # No clear background detected — treat everything as foreground
             fg_mask = np.ones(image.shape[:2], dtype=bool)
-
-    # Strip anti-aliased fringe at the background boundary
-    fg_mask = _remove_fringe_pixels(fg_mask)
 
     return image, fg_mask
 
@@ -110,11 +118,37 @@ def _detect_bg_from_corners(
 def _remove_bg_color(
     image: np.ndarray, bg_rgb: np.ndarray, tolerance: int = 30
 ) -> np.ndarray:
-    """Create a foreground mask by removing pixels close to the background color."""
+    """Create foreground mask by removing background regions connected to image edges.
+
+    Uses region-based detection: only pixels that both match the background
+    color AND belong to a connected component touching the image border are
+    classified as background.  This preserves foreground elements that share
+    the background color (e.g., white text inside a logo on a white background).
+    """
     diff = np.sqrt(
         np.sum((image.astype(float) - bg_rgb.astype(float)) ** 2, axis=2)
     )
-    return diff > tolerance
+    potential_bg = (diff <= tolerance).astype(np.uint8)
+
+    h, w = image.shape[:2]
+
+    # Find connected components among pixels matching the background color
+    num_labels, label_img = cv2.connectedComponents(potential_bg, connectivity=8)
+
+    # Identify which components touch the image border
+    border_labels = set()
+    border_labels.update(label_img[0, :].tolist())       # top row
+    border_labels.update(label_img[-1, :].tolist())      # bottom row
+    border_labels.update(label_img[:, 0].tolist())       # left column
+    border_labels.update(label_img[:, -1].tolist())      # right column
+    border_labels.discard(0)  # label 0 = non-matching pixels in connectedComponents
+
+    # Background = bg-colored pixels connected to the image border
+    bg_mask = np.zeros((h, w), dtype=bool)
+    for label_id in border_labels:
+        bg_mask |= (label_img == label_id)
+
+    return ~bg_mask
 
 
 def _remove_fringe_pixels(fg_mask: np.ndarray, fringe_width: int = 1) -> np.ndarray:

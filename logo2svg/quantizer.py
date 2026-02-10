@@ -50,7 +50,7 @@ def quantize_colors(
 
     # Clamp n_colors to valid range
     n_unique = len(np.unique(fg_pixels_lab.reshape(-1, 3), axis=0))
-    n_colors = max(2, min(n_colors, n_unique, max_k))
+    n_colors = max(1, min(n_colors, n_unique, max_k))
 
     # Run K-means clustering
     # Use MiniBatchKMeans for large images for speed
@@ -83,8 +83,13 @@ def _auto_detect_k(
     """Try k=2..max_k and return k with the highest silhouette score.
 
     Uses subsampling for performance since silhouette scoring is O(n^2).
+    Returns 1 if the foreground is essentially a single color.
     """
     n = len(pixels_lab)
+
+    # Pre-check: if color variance is very low, this is a single-color logo
+    if n > 0 and np.all(np.std(pixels_lab, axis=0) < 5.0):
+        return 1
 
     # Subsample if too many pixels
     if n > sample_limit:
