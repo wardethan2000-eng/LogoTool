@@ -23,11 +23,13 @@ Layout
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QColor, QDragEnterEvent, QDropEvent, QIcon
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QColorDialog,
     QFileDialog,
     QFrame,
@@ -64,8 +66,12 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
         self.setAcceptDrops(True)
 
-        # Window icon (taskbar + title bar)
-        icon_path = Path(__file__).resolve().parent.parent / "icons" / "quicklayer.ico"
+        # Window icon (taskbar + title bar) — handle frozen PyInstaller builds
+        if getattr(sys, "frozen", False):
+            _base = Path(sys._MEIPASS) / "logo2svg"
+        else:
+            _base = Path(__file__).resolve().parent.parent
+        icon_path = _base / "icons" / "quicklayer.ico"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
 
@@ -181,6 +187,35 @@ class MainWindow(QMainWindow):
         self._color_spin.setEnabled(False)
         self._color_spin.valueChanged.connect(self._on_color_count_changed)
         hbar.addWidget(self._color_spin)
+
+        hbar.addSpacing(12)
+        hbar.addWidget(self._vsep())
+        hbar.addSpacing(8)
+
+        # Separation mode toggle
+        sep_label = QLabel("Separate")
+        sep_label.setStyleSheet(f"color: {TEXT_SEC}; font-size: 13px;")
+        hbar.addWidget(sep_label)
+
+        self._mode_color_btn = QPushButton("By Color")
+        self._mode_color_btn.setCheckable(True)
+        self._mode_color_btn.setChecked(True)
+        self._mode_color_btn.setFixedHeight(32)
+        self._mode_color_btn.setToolTip("One layer per color (default)")
+        hbar.addWidget(self._mode_color_btn)
+
+        self._mode_object_btn = QPushButton("By Object")
+        self._mode_object_btn.setCheckable(True)
+        self._mode_object_btn.setChecked(False)
+        self._mode_object_btn.setFixedHeight(32)
+        self._mode_object_btn.setToolTip("One layer per connected object")
+        hbar.addWidget(self._mode_object_btn)
+
+        # Mutual exclusivity via QButtonGroup
+        self._mode_group = QButtonGroup(self)
+        self._mode_group.addButton(self._mode_color_btn, 0)
+        self._mode_group.addButton(self._mode_object_btn, 1)
+        self._mode_group.idToggled.connect(self._on_separation_mode_changed)
 
         hbar.addStretch()
 
@@ -390,6 +425,16 @@ class MainWindow(QMainWindow):
         """Manual color count spinner changed."""
         if not self._auto_btn.isChecked() and self._session.is_loaded:
             self._run_quantize()
+
+    def _on_separation_mode_changed(self, button_id: int, checked: bool) -> None:
+        """Separation mode toggle changed."""
+        if not checked:
+            return
+        mode = "color" if button_id == 0 else "object"
+        self._session.set_separation_mode(mode)
+        if self._session.is_quantized:
+            self._refresh_layers()
+            self._run_trace()
 
     # =================================================================
     #  Layer-panel signal handlers

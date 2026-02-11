@@ -372,13 +372,14 @@ QCheckBox::indicator {{
     width: 16px;
     height: 16px;
     border: 2px solid {BORDER_LIGHT};
-    border-radius: {RADIUS_SM};
+    border-radius: 8px;
     background: {CARD};
 }}
 
 QCheckBox::indicator:checked {{
     background-color: {ACCENT};
     border-color: {ACCENT};
+    border-radius: 8px;
     image: url(__ICONS_DIR__/check-white.svg);
 }}
 

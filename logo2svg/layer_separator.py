@@ -136,6 +136,45 @@ def _resolve_overlaps(
     return layers
 
 
+def separate_objects(
+    layers: list[dict],
+    min_area: int,
+) -> list[dict]:
+    """Split each color layer into individual connected components.
+
+    Each connected component becomes its own layer dict, inheriting the
+    color information from its parent layer.  Components smaller than
+    *min_area* are discarded.
+
+    Args:
+        layers: Layer dicts as returned by :func:`separate_layers`.
+        min_area: Minimum component area in pixels to retain.
+
+    Returns:
+        New list of layer dicts, one per connected component.
+    """
+    result = []
+    for layer in layers:
+        mask = layer["mask"]
+        num_labels, label_img, stats, _ = cv2.connectedComponentsWithStats(
+            mask, connectivity=8
+        )
+        for comp_id in range(1, num_labels):  # skip background (0)
+            area = stats[comp_id, cv2.CC_STAT_AREA]
+            if area < min_area:
+                continue
+            comp_mask = np.zeros_like(mask)
+            comp_mask[label_img == comp_id] = 255
+            result.append({
+                "rgb": layer["rgb"],
+                "hex_color": layer["hex_color"],
+                "color_name": layer["color_name"],
+                "mask": comp_mask,
+                "cluster_idx": layer["cluster_idx"],
+            })
+    return result
+
+
 def _filter_small_components(mask: np.ndarray, min_area: int) -> np.ndarray:
     """Remove connected components smaller than min_area pixels."""
     if min_area <= 0:

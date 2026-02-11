@@ -113,6 +113,20 @@ class TestWriteSvgFiles:
         assert out.exists()
         assert len(files) == 2
 
+    def test_individual_svgs_have_bounding_rect(self, tmp_path):
+        """Each per-color SVG should include an invisible bounding rectangle for slicer alignment."""
+        layers = _make_layers()
+        files = write_svg_files("test", layers, (100, 100), tmp_path)
+        ns = {"svg": "http://www.w3.org/2000/svg"}
+        for f in files:
+            tree = ET.parse(f)
+            root = tree.getroot()
+            rects = root.findall(".//svg:rect", ns)
+            assert len(rects) >= 1, "Expected an invisible bounding rect"
+            r = rects[0]
+            assert r.get("fill") == "none"
+            assert r.get("stroke") == "none"
+
 
 # ---------------------------------------------------------------------------
 # Combined SVG
