@@ -127,6 +127,22 @@ class MainWindow(QMainWindow):
         export_act.triggered.connect(self._on_export)
         file_menu.addAction(export_act)
 
+        export_png_act = QAction("Export &PNG\u2026", self)
+        export_png_act.triggered.connect(self._on_export_png)
+        file_menu.addAction(export_png_act)
+
+        file_menu.addSeparator()
+
+        save_project_act = QAction("&Save Project\u2026", self)
+        save_project_act.setShortcut("Ctrl+S")
+        save_project_act.triggered.connect(self._on_save_project)
+        file_menu.addAction(save_project_act)
+
+        load_project_act = QAction("&Load Project\u2026", self)
+        load_project_act.setShortcut("Ctrl+Shift+O")
+        load_project_act.triggered.connect(self._on_load_project)
+        file_menu.addAction(load_project_act)
+
         file_menu.addSeparator()
         quit_act = QAction("&Quit", self)
         quit_act.setShortcut("Ctrl+Q")
@@ -397,6 +413,10 @@ class MainWindow(QMainWindow):
         )
         self._layer_panel.delete_requested.connect(self._on_delete_layer)
         self._layer_panel.merge_requested.connect(self._on_merge_layers)
+        self._layer_panel.move_up_requested.connect(self._on_move_layer_up)
+        self._layer_panel.move_down_requested.connect(self._on_move_layer_down)
+        self._layer_panel.duplicate_requested.connect(self._on_duplicate_layer)
+        self._layer_panel.rename_requested.connect(self._on_rename_layer)
         left_splitter.addWidget(self._layer_panel)
 
         # Source image gets more space than layers
@@ -781,6 +801,80 @@ class MainWindow(QMainWindow):
         self._refresh_layers()
         self._refresh_preview()
         self._update_undo_redo_state()
+
+    def _on_move_layer_up(self, index: int) -> None:
+        if self._session.move_layer_up(index):
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+
+    def _on_move_layer_down(self, index: int) -> None:
+        if self._session.move_layer_down(index):
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+
+    def _on_duplicate_layer(self, index: int) -> None:
+        self._session.duplicate_layer(index)
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_rename_layer(self, index: int, name: str) -> None:
+        self._session.rename_layer(index, name)
+
+    # =================================================================
+    #  Save / Load / Export PNG
+    # =================================================================
+
+    def _on_save_project(self) -> None:
+        if not self._session.is_loaded:
+            QMessageBox.information(
+                self, "Save Project", "Open an image first."
+            )
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Project", "", "QuickLayer Project (*.qlp)"
+        )
+        if path:
+            try:
+                self._session.save_project(path)
+                self._status_label.setText(f"Project saved: {Path(path).name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", str(e))
+
+    def _on_load_project(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Project", "", "QuickLayer Project (*.qlp)"
+        )
+        if path:
+            try:
+                self._session.load_project(path)
+                self._source_panel.set_image(
+                    self._session.image, self._session.path
+                )
+                self._refresh_layers()
+                self._refresh_preview()
+                self._update_undo_redo_state()
+                self._status_label.setText(f"Project loaded: {Path(path).name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Load Error", str(e))
+
+    def _on_export_png(self) -> None:
+        if not self._session.is_quantized:
+            QMessageBox.information(
+                self, "Export PNG", "Open and quantize an image first."
+            )
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export PNG", "", "PNG Image (*.png)"
+        )
+        if path:
+            try:
+                self._session.export_png(path)
+                self._status_label.setText(f"PNG exported: {Path(path).name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", str(e))
 
     # =================================================================
     #  Worker callbacks

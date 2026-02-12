@@ -9,6 +9,7 @@ end-to-end ``process_single`` call.
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ class LayerInfo:
     color_name: str
     pixel_count: int
     visible: bool = True
+    name: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -182,9 +184,6 @@ class Session:
         """
         self._path = Path(path)
         self._image, self._fg_mask = load_image(self._path, bg_color)
-        # NOTE: do NOT pad to square here — _pad_to_square must run
-        # after remove_tm() so TM symbols are still at the image
-        # margins when the margin check runs.
         # Reset downstream
         self._labels = None
         self._centers_rgb = None
@@ -250,8 +249,6 @@ class Session:
         if self._fg_mask is None:
             raise RuntimeError("No image loaded. Call load() first.")
         self._fg_mask, removed = remove_tm_symbols(self._fg_mask)
-        # Pad to square AFTER margin-based TM detection so symbols
-        # that are near the original edges are still caught.
         self._pad_to_square()
         return removed
 
@@ -285,12 +282,10 @@ class Session:
                 image, fg_mask, target_colors
             )
         else:
-            # Erode mask to suppress anti-alias fringe during K-means
             fg_mask_eroded = self._erode_mask(fg_mask)
             labels, centers_rgb = quantize_colors(
                 image, fg_mask_eroded, n_colors=n_colors
             )
-            # Recover fringe pixels
             labels = self._recover_fringe_pixels(
                 image, labels, centers_rgb, fg_mask, fg_mask_eroded
             )
@@ -316,6 +311,7 @@ class Session:
                     color_name=layer["color_name"],
                     pixel_count=int(np.count_nonzero(layer["mask"])),
                     visible=layer.get("visible", True),
+                    name=layer.get("name", f"Layer {i + 1}"),
                 )
             )
         return result
@@ -352,13 +348,11 @@ class Session:
         keep_idx = indices_sorted[0]
         merge_idxs = indices_sorted[1:]
 
-        # OR masks into the keep layer
         for idx in merge_idxs:
             self._layers[keep_idx]["mask"] = np.maximum(
                 self._layers[keep_idx]["mask"], self._layers[idx]["mask"]
             )
 
-        # Remove merged layers in reverse order to keep indices stable
         for idx in reversed(merge_idxs):
             del self._layers[idx]
 
@@ -381,14 +375,7 @@ class Session:
         return self._separation_mode
 
     def set_separation_mode(self, mode: str) -> None:
-        """Set the layer separation mode.
-
-        ``'color'`` -- one layer per colour (default).
-        ``'object'`` -- one layer per connected component.
-
-        Changing the mode re-builds layers from the existing quantization
-        (if available) and resets tracing.
-        """
+        """Set the layer separation mode."""
         if mode not in ("color", "object"):
             raise ValueError(f"Invalid separation mode: {mode!r}")
         if mode == self._separation_mode:
@@ -405,6 +392,87 @@ class Session:
             raise IndexError(f"Layer index {index} out of range.")
         self._layers[index]["visible"] = visible
 
+    # -- layer rename -----------------------------------------------------
+
+    def rename_layer(self, index: int, name: str) -> None:
+        """Rename a layer."""
+        self._require_layers("rename_layer")
+        if not 0 <= index < len(self._layers):
+            raise IndexError(f"Layer index {index} out of range.")
+        self._layers[index]["name"] = name
+
+    # -- layer reorder ----------------------------------------------------
+
+    def move_layer_up(self, index: int) -> bool:
+        """Move a layer one position up (towards index 0 = rendered first).
+
+        Returns True if moved, False if already at top.
+        Resolves overlaps after the move.
+        """
+        self._require_layers("move_layer_up")
+        if index <= 0 or index >= len(self._layers):
+            return False
+        self._save_undo("Move layer up")
+        self._layers[index], self._layers[index - 1] = (
+            self._layers[index - 1], self._layers[index]
+        )
+        self._resolve_overlaps()
+        self._traced = False
+        return True
+
+    def move_layer_down(self, index: int) -> bool:
+        """Move a layer one position down (towards end = rendered last/on top).
+
+        Returns True if moved, False if already at bottom.
+        Resolves overlaps after the move.
+        """
+        self._require_layers("move_layer_down")
+        if index < 0 or index >= len(self._layers) - 1:
+            return False
+        self._save_undo("Move layer down")
+        self._layers[index], self._layers[index + 1] = (
+            self._layers[index + 1], self._layers[index]
+        )
+        self._resolve_overlaps()
+        self._traced = False
+        return True
+
+    # -- duplicate layer --------------------------------------------------
+
+    def duplicate_layer(self, index: int) -> int:
+        """Duplicate a layer and insert the copy immediately after it.
+
+        The duplicate gets a copy of the mask and colour, with " (copy)"
+        appended to the name.  Overlaps are resolved after duplication
+        (the duplicate will have no pixels since they all belong to the
+        original -- useful as a starting point for the user to modify).
+
+        Returns the index of the new layer.
+        """
+        self._require_layers("duplicate_layer")
+        if not 0 <= index < len(self._layers):
+            raise IndexError(f"Layer index {index} out of range.")
+
+        self._save_undo("Duplicate layer")
+        original = self._layers[index]
+        dup = {
+            "rgb": original["rgb"],
+            "hex_color": original["hex_color"],
+            "color_name": original["color_name"],
+            "mask": original["mask"].copy(),
+            "cluster_idx": original.get("cluster_idx", -1),
+            "visible": original.get("visible", True),
+            "name": original.get("name", f"Layer {index + 1}") + " (copy)",
+        }
+        insert_at = index + 1
+        self._layers.insert(insert_at, dup)
+        # Resolve overlaps: the duplicate shares all pixels with the original.
+        # Since the original has a lower index, it "owns" those pixels,
+        # so the duplicate's mask gets cleared of overlap.
+        self._resolve_overlaps()
+        self._traced = False
+        return insert_at
+
     # -- SVG import -------------------------------------------------------
 
     def import_svg(
@@ -415,15 +483,10 @@ class Session:
         """Import an external SVG file as new colour layer(s).
 
         Each distinct colour in the SVG becomes a separate layer appended
-        to the current layer list.
+        to the current layer list.  Overlaps with existing layers are
+        resolved (imported layers take priority since they are on top).
 
-        Args:
-            svg_path: Path to the SVG file.
-            color_override: If set, import the entire SVG as one layer
-                with this hex colour.
-
-        Returns:
-            Number of layers added.
+        Returns the number of layers added.
         """
         if self._image is None:
             raise RuntimeError("No image loaded. Call load() first.")
@@ -441,6 +504,7 @@ class Session:
 
         self._save_undo("Import SVG")
         self._layers.extend(new_layers)
+        self._resolve_overlaps()
         self._traced = False
         return len(new_layers)
 
@@ -456,15 +520,9 @@ class Session:
 
         Creates a new layer containing only the border pixels (dilated mask
         minus original mask).  The new layer is inserted directly after the
-        source layer.
+        source layer.  Overlaps with other layers are resolved automatically.
 
-        Args:
-            index: Source layer index.
-            width: Outline thickness in pixels.
-            color: Hex colour for the outline.
-
-        Returns:
-            Index of the newly created outline layer.
+        Returns the index of the newly created outline layer.
         """
         self._require_layers("add_outline")
         if not 0 <= index < len(self._layers):
@@ -486,10 +544,12 @@ class Session:
             "mask": outline_mask,
             "cluster_idx": -1,
             "visible": True,
+            "name": f"Outline ({self._layers[index].get('name', f'Layer {index + 1}')})",
         }
 
         insert_at = index + 1
         self._layers.insert(insert_at, new_layer)
+        self._resolve_overlaps()
         self._traced = False
         return insert_at
 
@@ -500,12 +560,10 @@ class Session:
     ) -> int:
         """Add a rectangular border around the entire canvas as a new layer.
 
-        Args:
-            width: Border thickness in pixels.
-            color: Hex colour for the border.
+        The border is inserted at the bottom of the layer stack (index 0)
+        so it doesn't obscure any existing layers.  Overlaps are resolved.
 
-        Returns:
-            Index of the newly created border layer.
+        Returns the index of the newly created border layer.
         """
         if self._image is None:
             raise RuntimeError("No image loaded.")
@@ -516,13 +574,9 @@ class Session:
         self._save_undo("Add canvas border")
         h, w_px = self._image.shape[:2]
         mask = np.zeros((h, w_px), dtype=np.uint8)
-        # Top
         mask[:width, :] = 255
-        # Bottom
         mask[-width:, :] = 255
-        # Left
         mask[:, :width] = 255
-        # Right
         mask[:, -width:] = 255
 
         r, g, b = hex_to_rgb(color)
@@ -533,11 +587,14 @@ class Session:
             "mask": mask,
             "cluster_idx": -1,
             "visible": True,
+            "name": "Canvas border",
         }
 
-        self._layers.append(new_layer)
+        # Insert at the bottom so it doesn't cover existing content
+        self._layers.insert(0, new_layer)
+        self._resolve_overlaps()
         self._traced = False
-        return len(self._layers) - 1
+        return 0
 
     # -- text tool --------------------------------------------------------
 
@@ -556,16 +613,10 @@ class Session:
         Uses OpenCV's built-in font rendering.  The text is positioned at
         (x, y) or centered on the canvas if not specified.
 
-        Args:
-            text: The text string to render.
-            color: Hex colour.
-            font_scale: OpenCV font scale factor.
-            thickness: Text stroke thickness.
-            x: Horizontal position (left edge of text baseline).
-            y: Vertical position (text baseline).
+        The text layer is added on top (highest index) and overlaps with
+        existing layers are resolved (text takes priority).
 
-        Returns:
-            Index of the newly created text layer.
+        Returns the index of the newly created text layer.
         """
         if self._image is None:
             raise RuntimeError("No image loaded.")
@@ -595,11 +646,42 @@ class Session:
             "mask": mask,
             "cluster_idx": -1,
             "visible": True,
+            "name": f'Text: "{text}"',
         }
 
         self._layers.append(new_layer)
+        self._resolve_overlaps()
         self._traced = False
         return len(self._layers) - 1
+
+    # -- overlap resolution -----------------------------------------------
+
+    def _resolve_overlaps(self) -> None:
+        """Ensure no two layers share any pixels.
+
+        For 3D printing, each pixel must belong to exactly one colour layer.
+        When layers overlap, the *last* layer in the list (highest index)
+        wins — it keeps its pixels, and those pixels are cleared from all
+        earlier layers.
+
+        This is called automatically after any layer addition, import,
+        or reorder operation.
+        """
+        if self._layers is None or len(self._layers) < 2:
+            return
+
+        # Build a "claimed" mask, iterating from last (top) to first (bottom).
+        # Each layer keeps only pixels not already claimed by a layer above it.
+        h, w = self._layers[0]["mask"].shape
+        claimed = np.zeros((h, w), dtype=bool)
+
+        for layer in reversed(self._layers):
+            layer_mask = layer["mask"] > 0
+            # Remove pixels already claimed by a higher layer
+            layer_mask_clean = layer_mask & ~claimed
+            layer["mask"] = (layer_mask_clean.astype(np.uint8) * 255)
+            # Mark these pixels as claimed
+            claimed |= layer_mask_clean
 
     # -- undo / redo ------------------------------------------------------
 
@@ -614,7 +696,6 @@ class Session:
             self._undo_stack.append(snapshot)
             if len(self._undo_stack) > self._max_undo:
                 self._undo_stack.pop(0)
-            # Clear redo stack on new action
             self._redo_stack.clear()
 
     def undo(self) -> bool:
@@ -622,7 +703,6 @@ class Session:
         if not self._undo_stack:
             return False
 
-        # Save current state to redo
         if self._layers is not None:
             self._redo_stack.append(_Snapshot(
                 layers=copy.deepcopy(self._layers),
@@ -640,7 +720,6 @@ class Session:
         if not self._redo_stack:
             return False
 
-        # Save current to undo
         if self._layers is not None:
             self._undo_stack.append(_Snapshot(
                 layers=copy.deepcopy(self._layers),
@@ -717,6 +796,144 @@ class Session:
 
         return output_files
 
+    def export_png(self, output_path: str | Path) -> Path:
+        """Export the composite preview as a PNG file.
+
+        Renders all visible layers onto a white background and saves as PNG.
+
+        Args:
+            output_path: Destination file path.
+
+        Returns:
+            The output path as a Path object.
+        """
+        if self._image is None:
+            raise RuntimeError("No image loaded.")
+        self._require_layers("export_png")
+
+        from PIL import Image
+
+        rgba = self.get_composite_preview()
+        if rgba is None:
+            raise RuntimeError("No layers to export.")
+
+        # Composite over white background
+        h, w = rgba.shape[:2]
+        white = np.full((h, w, 3), 255, dtype=np.uint8)
+        alpha = rgba[:, :, 3:4].astype(np.float32) / 255.0
+        blended = (
+            rgba[:, :, :3].astype(np.float32) * alpha
+            + white.astype(np.float32) * (1.0 - alpha)
+        )
+        blended = np.clip(blended, 0, 255).astype(np.uint8)
+
+        out = Path(output_path)
+        Image.fromarray(blended, "RGB").save(out)
+        return out
+
+    # -- save / load project ----------------------------------------------
+
+    def save_project(self, project_path: str | Path) -> Path:
+        """Save the current session state to a JSON project file.
+
+        Saves: image path, tunable parameters, layer data (colours, masks,
+        names, visibility).  Masks are stored as run-length encoded data
+        for efficiency.
+
+        Args:
+            project_path: Destination .qlp (QuickLayer Project) file path.
+
+        Returns:
+            The project file path.
+        """
+        if self._image is None:
+            raise RuntimeError("No image loaded.")
+
+        project_path = Path(project_path)
+
+        layers_data = []
+        if self._layers:
+            for i, layer in enumerate(self._layers):
+                layers_data.append({
+                    "rgb": list(layer["rgb"]),
+                    "hex_color": layer["hex_color"],
+                    "color_name": layer["color_name"],
+                    "cluster_idx": layer.get("cluster_idx", -1),
+                    "visible": layer.get("visible", True),
+                    "name": layer.get("name", f"Layer {i + 1}"),
+                    "mask_rle": _rle_encode(layer["mask"]),
+                    "mask_shape": list(layer["mask"].shape),
+                })
+
+        project = {
+            "version": 2,
+            "source_path": str(self._path) if self._path else None,
+            "image_shape": list(self._image.shape),
+            "min_area": self.min_area,
+            "alphamax": self.alphamax,
+            "opttolerance": self.opttolerance,
+            "turdsize": self.turdsize,
+            "scale": self.scale,
+            "width": self.width,
+            "separation_mode": self._separation_mode,
+            "layers": layers_data,
+        }
+
+        project_path.write_text(json.dumps(project, indent=2))
+        return project_path
+
+    def load_project(self, project_path: str | Path) -> None:
+        """Load a session from a project file.
+
+        Restores the source image (must still exist at the original path)
+        and all layer data.
+
+        Args:
+            project_path: Path to a .qlp project file.
+        """
+        project_path = Path(project_path)
+        project = json.loads(project_path.read_text())
+
+        # Restore source image
+        source_path = project.get("source_path")
+        if source_path and Path(source_path).exists():
+            self.load(source_path)
+            self.ensure_square()
+        else:
+            raise FileNotFoundError(
+                f"Source image not found: {source_path}. "
+                "The original image must still exist at its original path."
+            )
+
+        # Restore tunables
+        self.min_area = project.get("min_area", 100)
+        self.alphamax = project.get("alphamax", 1.0)
+        self.opttolerance = project.get("opttolerance", 0.2)
+        self.turdsize = project.get("turdsize", 2)
+        self.scale = project.get("scale", 1.0)
+        self.width = project.get("width")
+        self._separation_mode = project.get("separation_mode", "color")
+
+        # Restore layers
+        layers_data = project.get("layers", [])
+        if layers_data:
+            self._layers = []
+            for ld in layers_data:
+                mask = _rle_decode(ld["mask_rle"], tuple(ld["mask_shape"]))
+                self._layers.append({
+                    "rgb": tuple(ld["rgb"]),
+                    "hex_color": ld["hex_color"],
+                    "color_name": ld["color_name"],
+                    "cluster_idx": ld.get("cluster_idx", -1),
+                    "visible": ld.get("visible", True),
+                    "name": ld.get("name", ""),
+                    "mask": mask,
+                })
+
+        self._traced = False
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+
     # -- composite preview ------------------------------------------------
 
     def get_composite_preview(self) -> np.ndarray | None:
@@ -728,7 +945,7 @@ class Session:
             return None
 
         h, w = self._image.shape[:2]
-        composite = np.zeros((h, w, 4), dtype=np.uint8)  # RGBA, transparent
+        composite = np.zeros((h, w, 4), dtype=np.uint8)
 
         for layer in self._layers:
             if not layer.get("visible", True):
@@ -745,10 +962,7 @@ class Session:
     # -- SVG string for preview (no file write) ---------------------------
 
     def get_composite_svg(self) -> str | None:
-        """Return an SVG string compositing all visible, traced layers.
-
-        Returns ``None`` if tracing hasn't been performed yet.
-        """
+        """Return an SVG string compositing all visible, traced layers."""
         if not self._traced or self._layers is None or self._image is None:
             return None
 
@@ -781,7 +995,7 @@ class Session:
         return "\n".join(parts)
 
     # =====================================================================
-    # Internal helpers (ported from pipeline.py so Session is self-contained)
+    # Internal helpers
     # =====================================================================
 
     def _require_layers(self, method: str) -> None:
@@ -791,12 +1005,7 @@ class Session:
             )
 
     def _build_layers(self) -> None:
-        """Build layer dicts from current labels / centres.
-
-        In ``'color'`` mode, uses :func:`separate_layers` (one layer per colour).
-        In ``'object'`` mode, further splits each colour into individual
-        connected components via :func:`separate_objects`.
-        """
+        """Build layer dicts from current labels / centres."""
         assert self._labels is not None
         assert self._centers_rgb is not None
         assert self._fg_mask is not None
@@ -809,24 +1018,17 @@ class Session:
         if self._separation_mode == "object":
             layers = separate_objects(layers, self.min_area)
         self._layers = layers
-        # Ensure every layer has a visibility flag
-        for layer in self._layers:
+        for i, layer in enumerate(self._layers):
             layer.setdefault("visible", True)
-
-    # -- helpers from pipeline.py -----------------------------------------
+            layer.setdefault("name", f"Layer {i + 1}")
 
     def _pad_to_square(self) -> None:
-        """Pad image and mask to a square canvas (no cropping, no downscale).
-
-        Uses the detected background colour for the padding area.
-        """
+        """Pad image and mask to a square canvas (no cropping, no downscale)."""
         h, w = self._image.shape[:2]
         if h == w:
             return
 
         size = max(h, w)
-
-        # Determine background colour from non-foreground pixels
         bg_pixels = self._image[~self._fg_mask]
         if len(bg_pixels) > 0:
             bg_color = np.median(bg_pixels, axis=0).astype(np.uint8)
@@ -898,3 +1100,41 @@ class Session:
         labels = np.full((h, w), -1, dtype=np.int32)
         labels[fg_mask] = nearest
         return labels, targets_rgb
+
+
+# =========================================================================
+# RLE encoding/decoding for mask serialization
+# =========================================================================
+
+def _rle_encode(mask: np.ndarray) -> list[int]:
+    """Run-length encode a uint8 mask (0 or 255) as a list of run lengths.
+
+    The encoding alternates between runs of 0s and runs of 255s,
+    always starting with a 0-run (which may be length 0).
+    """
+    flat = (mask.ravel() > 0).astype(np.uint8)
+    runs = []
+    current = 0
+    count = 0
+    for val in flat:
+        if val == current:
+            count += 1
+        else:
+            runs.append(count)
+            current = 1 - current
+            count = 1
+    runs.append(count)
+    return runs
+
+
+def _rle_decode(runs: list[int], shape: tuple[int, ...]) -> np.ndarray:
+    """Decode an RLE-encoded mask back to a uint8 array."""
+    flat = np.zeros(shape[0] * shape[1], dtype=np.uint8)
+    pos = 0
+    current = 0
+    for length in runs:
+        if current == 1:
+            flat[pos:pos + length] = 255
+        pos += length
+        current = 1 - current
+    return flat.reshape(shape)

@@ -87,6 +87,38 @@ from .pipeline import PipelineConfig, process_batch, process_single
     "--keep-tm", is_flag=True, default=False,
     help="Keep small trademark symbols (TM/®) instead of auto-removing them from margins.",
 )
+@click.option(
+    "--enhance-contrast", is_flag=True, default=False,
+    help="Apply CLAHE contrast enhancement before quantization.",
+)
+@click.option(
+    "--sharpen", is_flag=True, default=False,
+    help="Apply edge sharpening before quantization.",
+)
+@click.option(
+    "--denoise", is_flag=True, default=False,
+    help="Apply noise reduction before quantization.",
+)
+@click.option(
+    "--import-svg", type=click.Path(exists=True), default=None,
+    help="Import an SVG file as additional color layers after quantization.",
+)
+@click.option(
+    "--add-text", type=str, default=None,
+    help='Add text as a layer (e.g. --add-text "My Logo").',
+)
+@click.option(
+    "--add-border", type=int, default=None,
+    help="Add a canvas border of this width in pixels.",
+)
+@click.option(
+    "--border-color", type=str, default="#000000",
+    help="Color for the canvas border (hex). Default: #000000.",
+)
+@click.option(
+    "--text-color", type=str, default="#000000",
+    help="Color for the text layer (hex). Default: #000000.",
+)
 def main(
     input_path: str,
     colors: int | None,
@@ -107,6 +139,14 @@ def main(
     report: bool,
     gui: bool,
     keep_tm: bool,
+    enhance_contrast: bool,
+    sharpen: bool,
+    denoise: bool,
+    import_svg: str | None,
+    add_text: str | None,
+    add_border: int | None,
+    border_color: str,
+    text_color: str,
 ) -> None:
     """Convert a PNG or JPEG logo into color-separated SVG files for 3D printing.
 
@@ -203,7 +243,78 @@ def main(
             if not path.is_file():
                 click.echo(f"Error: {path} does not exist or is not a file.", err=True)
                 sys.exit(1)
-            process_single(path, config)
+
+            # Use Session directly when extra features are requested
+            if enhance_contrast or sharpen or denoise or import_svg or add_text or add_border:
+                from .session import Session
+                session = Session(
+                    min_area=config.min_area,
+                    alphamax=config.alphamax,
+                    opttolerance=config.opttolerance,
+                    turdsize=config.turdsize,
+                    scale=config.scale,
+                    width=config.width,
+                )
+                session.load(path, bg_color=config.bg_color)
+                if config.remove_tm:
+                    session.remove_tm()
+                else:
+                    session.ensure_square()
+
+                # Preprocessing
+                if enhance_contrast or sharpen or denoise:
+                    if config.verbosity >= 1:
+                        click.echo("  Applying image preprocessing...")
+                    report = session.run_preprocessing(
+                        contrast=enhance_contrast,
+                        sharpen=sharpen,
+                        denoise=denoise,
+                    )
+                    for rec in (report.recommendations or []):
+                        if config.verbosity >= 1:
+                            click.echo(f"    {rec}")
+
+                # Quantize
+                session.quantize(
+                    n_colors=config.colors,
+                    target_colors=config.target_colors,
+                )
+
+                # Post-quantize additions
+                if import_svg:
+                    count = session.import_svg(import_svg)
+                    if config.verbosity >= 1:
+                        click.echo(f"  Imported {count} layer(s) from SVG")
+
+                if add_border:
+                    session.add_canvas_border(width=add_border, color=border_color)
+                    if config.verbosity >= 1:
+                        click.echo(f"  Added {add_border}px canvas border")
+
+                if add_text:
+                    session.add_text(add_text, color=text_color)
+                    if config.verbosity >= 1:
+                        click.echo(f'  Added text layer: "{add_text}"')
+
+                # Report mode
+                if config.report:
+                    for info in session.get_layers():
+                        total_fg = sum(l.pixel_count for l in session.get_layers())
+                        pct = 100.0 * info.pixel_count / total_fg if total_fg > 0 else 0
+                        click.echo(
+                            f"  {info.hex_color}  {info.color_name:<20s}  "
+                            f"{info.pixel_count:>8d} px  ({pct:5.1f}%)"
+                        )
+                else:
+                    output_files = session.export(
+                        config.output_dir,
+                        combined=config.combined,
+                        preview=config.preview,
+                    )
+                    if config.verbosity >= 1:
+                        click.echo(f"  {len(output_files)} file(s) created.")
+            else:
+                process_single(path, config)
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
