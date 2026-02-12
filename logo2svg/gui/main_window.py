@@ -26,6 +26,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from logo2svg import __version__
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QColor, QDragEnterEvent, QDropEvent, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
@@ -82,7 +84,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("QuickLayer")
+        self.setWindowTitle(f"QuickLayer v{__version__}")
         self.resize(1280, 800)
         self.setAcceptDrops(True)
 
@@ -216,6 +218,24 @@ class MainWindow(QMainWindow):
         zoom_reset_act.setShortcut("Ctrl+0")
         zoom_reset_act.triggered.connect(lambda: self._preview.zoom_reset())
         view_menu.addAction(zoom_reset_act)
+
+        # -- Help menu --
+        help_menu = mb.addMenu("&Help")
+
+        about_act = QAction("&About QuickLayer", self)
+        about_act.triggered.connect(self._on_about)
+        help_menu.addAction(about_act)
+
+    def _on_about(self) -> None:
+        QMessageBox.about(
+            self,
+            "About QuickLayer",
+            f"<h2>QuickLayer</h2>"
+            f"<p>Version {__version__}</p>"
+            f"<p>Convert logos into color-separated SVGs<br>"
+            f"for multi-color 3D printing.</p>"
+            f"<p>\u00a9 2026 QuickLayer</p>",
+        )
 
     def _build_central(self) -> None:
         central = QWidget()

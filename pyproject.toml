@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "logo2svg"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Convert PNG/JPEG logos into color-separated SVG files for multi-color 3D printing"
 readme = "README.md"
 license = {text = "MIT"}
@@ -32,3 +32,6 @@ gui = [
 [project.scripts]
 logo2svg = "logo2svg.cli:main"
 logo2svg-gui = "logo2svg.gui.app:run_gui_cli"
+
+[tool.hatch.version]
+path = "logo2svg/__init__.py"
