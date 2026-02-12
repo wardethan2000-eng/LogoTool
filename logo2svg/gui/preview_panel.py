@@ -1,15 +1,30 @@
-"""Centre preview panel with composite rendering and empty-state drop zone.
+"""Centre preview panel with composite rendering, zoom/pan, and empty-state drop zone.
 
 The preview occupies the main content area and shows the RGBA composite
 of all visible layers over a light checkerboard pattern.  When no image
 is loaded, a subtle drop-zone hint is displayed.
+
+Zoom/pan controls:
+  - Mouse wheel to zoom in/out (centered on cursor)
+  - Click and drag to pan
+  - Double-click to reset zoom
+  - Zoom percentage shown in bottom-right
 """
 
 from __future__ import annotations
 
 import numpy as np
-from PyQt6.QtCore import QRectF, QSize, Qt, QTimer
-from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PyQt6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QImage,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+    QWheelEvent,
+)
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .style import ACCENT, BG, BORDER, SURFACE, TEXT_MUTED, TEXT_SEC
@@ -90,11 +105,16 @@ class _ProcessingOverlay(QWidget):
 
 
 class PreviewPanel(QWidget):
-    """Displays an RGBA composite of all visible layers, scaled to fit."""
+    """Displays an RGBA composite of all visible layers with zoom/pan support."""
+
+    # Zoom limits
+    _MIN_ZOOM = 0.1
+    _MAX_ZOOM = 20.0
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet(f"background-color: {BG};")
+        self.setMouseTracking(True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -104,12 +124,39 @@ class PreviewPanel(QWidget):
         layout.addWidget(self._image_label, stretch=1)
 
         self._current_pixmap: QPixmap | None = None
+
+        # Zoom/pan state
+        self._zoom = 1.0
+        self._pan_offset = QPointF(0, 0)
+        self._dragging = False
+        self._drag_start = QPointF(0, 0)
+        self._drag_pan_start = QPointF(0, 0)
+
         self._show_empty_state()
 
         # Processing overlay (child of this widget, covers entire panel)
         self._overlay = _ProcessingOverlay(self)
 
     # -- public API -------------------------------------------------------
+
+    @property
+    def zoom_level(self) -> float:
+        """Current zoom factor (1.0 = fit to panel)."""
+        return self._zoom
+
+    def zoom_in(self) -> None:
+        """Zoom in by one step (25%)."""
+        self._set_zoom(self._zoom * 1.25)
+
+    def zoom_out(self) -> None:
+        """Zoom out by one step (25%)."""
+        self._set_zoom(self._zoom / 1.25)
+
+    def zoom_reset(self) -> None:
+        """Reset zoom to fit-in-panel."""
+        self._zoom = 1.0
+        self._pan_offset = QPointF(0, 0)
+        self._fit_pixmap()
 
     def show_processing(self, message: str = "Processing\u2026") -> None:
         """Show a centered spinner overlay with *message*."""
@@ -158,6 +205,8 @@ class PreviewPanel(QWidget):
     def clear(self) -> None:
         self._current_pixmap = None
         self._image_label.setPixmap(QPixmap())
+        self._zoom = 1.0
+        self._pan_offset = QPointF(0, 0)
         self._show_empty_state()
 
     # -- events -----------------------------------------------------------
@@ -169,7 +218,57 @@ class PreviewPanel(QWidget):
         if self._overlay.isVisible():
             self._overlay.setGeometry(self.rect())
 
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """Zoom in/out with mouse wheel, centered on cursor."""
+        if self._current_pixmap is None:
+            return
+
+        # Get cursor position relative to the widget center
+        delta = event.angleDelta().y()
+        if delta == 0:
+            return
+
+        factor = 1.15 if delta > 0 else 1.0 / 1.15
+        new_zoom = max(self._MIN_ZOOM, min(self._MAX_ZOOM, self._zoom * factor))
+
+        # Adjust pan so zoom centers on cursor position
+        cursor = event.position()
+        center = QPointF(self.width() / 2, self.height() / 2)
+        cursor_offset = cursor - center - self._pan_offset
+
+        scale_change = new_zoom / self._zoom
+        self._pan_offset -= cursor_offset * (scale_change - 1)
+        self._zoom = new_zoom
+        self._fit_pixmap()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._current_pixmap is not None:
+            self._dragging = True
+            self._drag_start = event.position()
+            self._drag_pan_start = QPointF(self._pan_offset)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._dragging:
+            delta = event.position() - self._drag_start
+            self._pan_offset = self._drag_pan_start + delta
+            self._fit_pixmap()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        """Double-click to reset zoom."""
+        if self._current_pixmap is not None:
+            self.zoom_reset()
+
     # -- internals --------------------------------------------------------
+
+    def _set_zoom(self, new_zoom: float) -> None:
+        self._zoom = max(self._MIN_ZOOM, min(self._MAX_ZOOM, new_zoom))
+        self._fit_pixmap()
 
     def _show_empty_state(self) -> None:
         """Show the drag-and-drop / open hint."""
@@ -195,12 +294,44 @@ class PreviewPanel(QWidget):
         margin = 16
         target_w = max(1, self.width() - margin * 2)
         target_h = max(1, self.height() - margin * 2)
+
+        # Apply zoom factor
+        zoomed_w = int(target_w * self._zoom)
+        zoomed_h = int(target_h * self._zoom)
+
         scaled = self._current_pixmap.scaled(
-            QSize(target_w, target_h),
+            QSize(zoomed_w, zoomed_h),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        self._image_label.setPixmap(scaled)
+
+        # Create a canvas at the original target size for panning
+        canvas_w = max(1, self.width())
+        canvas_h = max(1, self.height())
+        canvas = QPixmap(canvas_w, canvas_h)
+        canvas.fill(QColor(BG))
+
+        painter = QPainter(canvas)
+        # Center the image + apply pan offset
+        x = int((canvas_w - scaled.width()) / 2 + self._pan_offset.x())
+        y = int((canvas_h - scaled.height()) / 2 + self._pan_offset.y())
+        painter.drawPixmap(x, y, scaled)
+
+        # Draw zoom indicator
+        if abs(self._zoom - 1.0) > 0.01:
+            zoom_text = f"{self._zoom * 100:.0f}%"
+            painter.setPen(QColor(TEXT_SEC))
+            font = painter.font()
+            font.setPointSize(10)
+            font.setWeight(QFont.Weight.DemiBold)
+            painter.setFont(font)
+            painter.drawText(
+                canvas_w - 70, canvas_h - 10, zoom_text
+            )
+
+        painter.end()
+
+        self._image_label.setPixmap(canvas)
         self._image_label.setText("")
 
     @staticmethod

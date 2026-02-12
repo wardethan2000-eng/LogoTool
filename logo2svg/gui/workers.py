@@ -48,7 +48,7 @@ class LoadWorker(_BaseWorker):
         self._remove_tm = remove_tm
 
     def _run(self) -> None:
-        self.progress.emit("Loading image…")
+        self.progress.emit("Loading image\u2026")
         self._session.load(self._path, bg_color=self._bg_color)
         if self._remove_tm:
             removed = self._session.remove_tm()
@@ -58,6 +58,44 @@ class LoadWorker(_BaseWorker):
             # Pad to square even when TM removal is skipped
             self._session.ensure_square()
         return None
+
+
+class PreprocessWorker(_BaseWorker):
+    """Run smart image preprocessing (contrast, sharpen, denoise)."""
+
+    def __init__(
+        self,
+        session: Session,
+        *,
+        contrast: bool = False,
+        sharpen: bool = False,
+        denoise: bool = False,
+        contrast_strength: float = 2.0,
+        sharpen_strength: float = 1.0,
+        denoise_strength: int = 10,
+        parent=None,
+    ):
+        super().__init__(session, parent)
+        self._contrast = contrast
+        self._sharpen = sharpen
+        self._denoise = denoise
+        self._contrast_strength = contrast_strength
+        self._sharpen_strength = sharpen_strength
+        self._denoise_strength = denoise_strength
+
+    def _run(self):
+        self.progress.emit("Analyzing image\u2026")
+        report = self._session.run_preprocessing(
+            contrast=self._contrast,
+            sharpen=self._sharpen,
+            denoise=self._denoise,
+            contrast_strength=self._contrast_strength,
+            sharpen_strength=self._sharpen_strength,
+            denoise_strength=self._denoise_strength,
+        )
+        if report.recommendations:
+            self.progress.emit(report.recommendations[0][:60] + "\u2026")
+        return report
 
 
 class QuantizeWorker(_BaseWorker):
@@ -75,7 +113,7 @@ class QuantizeWorker(_BaseWorker):
         self._target_colors = target_colors
 
     def _run(self) -> None:
-        self.progress.emit("Quantizing colours…")
+        self.progress.emit("Quantizing colours\u2026")
         self._session.quantize(
             n_colors=self._n_colors,
             target_colors=self._target_colors,
@@ -87,7 +125,7 @@ class TraceWorker(_BaseWorker):
     """Run Potrace on all layer masks."""
 
     def _run(self) -> None:
-        self.progress.emit("Tracing vector paths…")
+        self.progress.emit("Tracing vector paths\u2026")
         self._session.trace()
         return None
 
@@ -107,5 +145,28 @@ class ExportWorker(_BaseWorker):
         self._combined = combined
 
     def _run(self) -> list[Path]:
-        self.progress.emit("Exporting SVGs…")
+        self.progress.emit("Exporting SVGs\u2026")
         return self._session.export(self._output_dir, combined=self._combined)
+
+
+class ImportSvgWorker(_BaseWorker):
+    """Import an external SVG as colour layers."""
+
+    def __init__(
+        self,
+        session: Session,
+        svg_path: str,
+        color_override: str | None = None,
+        parent=None,
+    ):
+        super().__init__(session, parent)
+        self._svg_path = svg_path
+        self._color_override = color_override
+
+    def _run(self) -> int:
+        self.progress.emit("Importing SVG\u2026")
+        count = self._session.import_svg(
+            self._svg_path, color_override=self._color_override,
+        )
+        self.progress.emit(f"Imported {count} layer(s) from SVG")
+        return count

@@ -8,6 +8,7 @@ end-to-end ``process_single`` call.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,9 @@ import numpy as np
 from .color_utils import hex_to_rgb, nearest_color_name, rgb_to_hex
 from .image_loader import load_image
 from .layer_separator import separate_layers, separate_objects
+from .preprocessor import PreprocessReport, preprocess_image
 from .quantizer import quantize_colors
+from .svg_importer import import_svg_as_layers
 from .svg_writer import write_preview, write_svg_files
 from .tm_remover import remove_tm_symbols
 from .tracer import trace_mask_to_svg_paths
@@ -41,11 +44,23 @@ class LayerInfo:
 
 
 # ---------------------------------------------------------------------------
+# Undo / Redo snapshot
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _Snapshot:
+    """Lightweight snapshot of mutable session state for undo/redo."""
+    layers: list[dict] | None
+    traced: bool
+    description: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Session
 # ---------------------------------------------------------------------------
 
 class Session:
-    """Holds the intermediate state of a single logo → SVG conversion.
+    """Holds the intermediate state of a single logo -> SVG conversion.
 
     Typical interactive flow::
 
@@ -79,6 +94,11 @@ class Session:
     scale: float
     width: float | None
 
+    # Undo/redo
+    _undo_stack: list[_Snapshot]
+    _redo_stack: list[_Snapshot]
+    _max_undo: int
+
     def __init__(
         self,
         *,
@@ -104,6 +124,14 @@ class Session:
         self.turdsize = turdsize
         self.scale = scale
         self.width = width
+
+        # Undo/redo stacks
+        self._undo_stack = []
+        self._redo_stack = []
+        self._max_undo = 50
+
+        # Preprocessing report (last analysis)
+        self._preprocess_report: PreprocessReport | None = None
 
     # -- public properties ------------------------------------------------
 
@@ -140,6 +168,11 @@ class Session:
     def is_traced(self) -> bool:
         return self._traced
 
+    @property
+    def preprocess_report(self) -> PreprocessReport | None:
+        """Last preprocessing analysis report, or ``None``."""
+        return self._preprocess_report
+
     # -- stage 1: load ----------------------------------------------------
 
     def load(self, path: str | Path, bg_color: str | None = None) -> None:
@@ -157,11 +190,58 @@ class Session:
         self._centers_rgb = None
         self._layers = None
         self._traced = False
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+
+    # -- preprocessing ----------------------------------------------------
+
+    def run_preprocessing(
+        self,
+        *,
+        contrast: bool = False,
+        sharpen: bool = False,
+        denoise: bool = False,
+        contrast_strength: float = 2.0,
+        sharpen_strength: float = 1.0,
+        denoise_strength: int = 10,
+    ) -> PreprocessReport:
+        """Run smart preprocessing on the loaded image.
+
+        Should be called after :meth:`load` and before :meth:`quantize`.
+        Modifies ``self._image`` in place.  Returns the analysis report.
+        """
+        if self._image is None:
+            raise RuntimeError("No image loaded. Call load() first.")
+
+        self._image, report = preprocess_image(
+            self._image,
+            self._fg_mask,
+            contrast=contrast,
+            sharpen=sharpen,
+            denoise=denoise,
+            contrast_strength=contrast_strength,
+            sharpen_strength=sharpen_strength,
+            denoise_strength=denoise_strength,
+        )
+        self._preprocess_report = report
+        return report
+
+    def analyze_image(self) -> PreprocessReport:
+        """Analyze the loaded image without modifying it.
+
+        Returns a :class:`PreprocessReport` with recommendations.
+        """
+        if self._image is None:
+            raise RuntimeError("No image loaded. Call load() first.")
+        from .preprocessor import analyze_image
+        report = analyze_image(self._image, self._fg_mask)
+        self._preprocess_report = report
+        return report
 
     # -- stage 2: quantize ------------------------------------------------
 
     def remove_tm(self) -> int:
-        """Remove small TM / ® symbols from the foreground mask margins.
+        """Remove small TM / (R) symbols from the foreground mask margins.
 
         Should be called after :meth:`load` and before :meth:`quantize`.
         After TM removal, pads the image to a square canvas.
@@ -249,6 +329,7 @@ class Session:
         self._require_layers("remove_color")
         if not 0 <= index < len(self._layers):
             raise IndexError(f"Layer index {index} out of range.")
+        self._save_undo("Remove layer")
         del self._layers[index]
         self._traced = False
 
@@ -267,6 +348,7 @@ class Session:
             if not 0 <= idx < len(self._layers):
                 raise IndexError(f"Layer index {idx} out of range.")
 
+        self._save_undo("Merge layers")
         keep_idx = indices_sorted[0]
         merge_idxs = indices_sorted[1:]
 
@@ -287,6 +369,7 @@ class Session:
         self._require_layers("change_color")
         if not 0 <= index < len(self._layers):
             raise IndexError(f"Layer index {index} out of range.")
+        self._save_undo("Change color")
         r, g, b = hex_to_rgb(new_hex)
         self._layers[index]["rgb"] = (r, g, b)
         self._layers[index]["hex_color"] = rgb_to_hex(r, g, b)
@@ -300,8 +383,8 @@ class Session:
     def set_separation_mode(self, mode: str) -> None:
         """Set the layer separation mode.
 
-        ``'color'`` — one layer per colour (default).
-        ``'object'`` — one layer per connected component.
+        ``'color'`` -- one layer per colour (default).
+        ``'object'`` -- one layer per connected component.
 
         Changing the mode re-builds layers from the existing quantization
         (if available) and resets tracing.
@@ -316,11 +399,267 @@ class Session:
             self._traced = False
 
     def set_layer_visibility(self, index: int, visible: bool) -> None:
-        """Toggle visibility (for preview composite only — does not affect export)."""
+        """Toggle visibility (for preview composite only -- does not affect export)."""
         self._require_layers("set_layer_visibility")
         if not 0 <= index < len(self._layers):
             raise IndexError(f"Layer index {index} out of range.")
         self._layers[index]["visible"] = visible
+
+    # -- SVG import -------------------------------------------------------
+
+    def import_svg(
+        self,
+        svg_path: str | Path,
+        color_override: str | None = None,
+    ) -> int:
+        """Import an external SVG file as new colour layer(s).
+
+        Each distinct colour in the SVG becomes a separate layer appended
+        to the current layer list.
+
+        Args:
+            svg_path: Path to the SVG file.
+            color_override: If set, import the entire SVG as one layer
+                with this hex colour.
+
+        Returns:
+            Number of layers added.
+        """
+        if self._image is None:
+            raise RuntimeError("No image loaded. Call load() first.")
+
+        h, w = self._image.shape[:2]
+        new_layers = import_svg_as_layers(
+            svg_path, h, w, color_override=color_override,
+        )
+
+        if not new_layers:
+            return 0
+
+        if self._layers is None:
+            self._layers = []
+
+        self._save_undo("Import SVG")
+        self._layers.extend(new_layers)
+        self._traced = False
+        return len(new_layers)
+
+    # -- border / outline tool --------------------------------------------
+
+    def add_outline(
+        self,
+        index: int,
+        width: int = 3,
+        color: str = "#000000",
+    ) -> int:
+        """Add an outline around a layer's objects as a new layer.
+
+        Creates a new layer containing only the border pixels (dilated mask
+        minus original mask).  The new layer is inserted directly after the
+        source layer.
+
+        Args:
+            index: Source layer index.
+            width: Outline thickness in pixels.
+            color: Hex colour for the outline.
+
+        Returns:
+            Index of the newly created outline layer.
+        """
+        self._require_layers("add_outline")
+        if not 0 <= index < len(self._layers):
+            raise IndexError(f"Layer index {index} out of range.")
+
+        self._save_undo("Add outline")
+        source_mask = self._layers[index]["mask"]
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (width * 2 + 1, width * 2 + 1)
+        )
+        dilated = cv2.dilate(source_mask, kernel, iterations=1)
+        outline_mask = dilated - source_mask
+
+        r, g, b = hex_to_rgb(color)
+        new_layer = {
+            "rgb": (r, g, b),
+            "hex_color": rgb_to_hex(r, g, b),
+            "color_name": nearest_color_name(r, g, b),
+            "mask": outline_mask,
+            "cluster_idx": -1,
+            "visible": True,
+        }
+
+        insert_at = index + 1
+        self._layers.insert(insert_at, new_layer)
+        self._traced = False
+        return insert_at
+
+    def add_canvas_border(
+        self,
+        width: int = 10,
+        color: str = "#000000",
+    ) -> int:
+        """Add a rectangular border around the entire canvas as a new layer.
+
+        Args:
+            width: Border thickness in pixels.
+            color: Hex colour for the border.
+
+        Returns:
+            Index of the newly created border layer.
+        """
+        if self._image is None:
+            raise RuntimeError("No image loaded.")
+
+        if self._layers is None:
+            self._layers = []
+
+        self._save_undo("Add canvas border")
+        h, w_px = self._image.shape[:2]
+        mask = np.zeros((h, w_px), dtype=np.uint8)
+        # Top
+        mask[:width, :] = 255
+        # Bottom
+        mask[-width:, :] = 255
+        # Left
+        mask[:, :width] = 255
+        # Right
+        mask[:, -width:] = 255
+
+        r, g, b = hex_to_rgb(color)
+        new_layer = {
+            "rgb": (r, g, b),
+            "hex_color": rgb_to_hex(r, g, b),
+            "color_name": nearest_color_name(r, g, b),
+            "mask": mask,
+            "cluster_idx": -1,
+            "visible": True,
+        }
+
+        self._layers.append(new_layer)
+        self._traced = False
+        return len(self._layers) - 1
+
+    # -- text tool --------------------------------------------------------
+
+    def add_text(
+        self,
+        text: str,
+        *,
+        color: str = "#000000",
+        font_scale: float = 2.0,
+        thickness: int = 3,
+        x: int | None = None,
+        y: int | None = None,
+    ) -> int:
+        """Render text as a new colour layer.
+
+        Uses OpenCV's built-in font rendering.  The text is positioned at
+        (x, y) or centered on the canvas if not specified.
+
+        Args:
+            text: The text string to render.
+            color: Hex colour.
+            font_scale: OpenCV font scale factor.
+            thickness: Text stroke thickness.
+            x: Horizontal position (left edge of text baseline).
+            y: Vertical position (text baseline).
+
+        Returns:
+            Index of the newly created text layer.
+        """
+        if self._image is None:
+            raise RuntimeError("No image loaded.")
+
+        if self._layers is None:
+            self._layers = []
+
+        self._save_undo("Add text")
+        h, w = self._image.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+        if x is None:
+            x = max(0, (w - tw) // 2)
+        if y is None:
+            y = max(th, (h + th) // 2)
+
+        cv2.putText(mask, text, (x, y), font, font_scale, 255, thickness, cv2.LINE_AA)
+
+        r, g, b = hex_to_rgb(color)
+        new_layer = {
+            "rgb": (r, g, b),
+            "hex_color": rgb_to_hex(r, g, b),
+            "color_name": nearest_color_name(r, g, b),
+            "mask": mask,
+            "cluster_idx": -1,
+            "visible": True,
+        }
+
+        self._layers.append(new_layer)
+        self._traced = False
+        return len(self._layers) - 1
+
+    # -- undo / redo ------------------------------------------------------
+
+    def _save_undo(self, description: str = "") -> None:
+        """Save the current layer state to the undo stack."""
+        if self._layers is not None:
+            snapshot = _Snapshot(
+                layers=copy.deepcopy(self._layers),
+                traced=self._traced,
+                description=description,
+            )
+            self._undo_stack.append(snapshot)
+            if len(self._undo_stack) > self._max_undo:
+                self._undo_stack.pop(0)
+            # Clear redo stack on new action
+            self._redo_stack.clear()
+
+    def undo(self) -> bool:
+        """Undo the last layer mutation.  Returns True if undo was performed."""
+        if not self._undo_stack:
+            return False
+
+        # Save current state to redo
+        if self._layers is not None:
+            self._redo_stack.append(_Snapshot(
+                layers=copy.deepcopy(self._layers),
+                traced=self._traced,
+                description="redo",
+            ))
+
+        snapshot = self._undo_stack.pop()
+        self._layers = snapshot.layers
+        self._traced = snapshot.traced
+        return True
+
+    def redo(self) -> bool:
+        """Redo the last undone action.  Returns True if redo was performed."""
+        if not self._redo_stack:
+            return False
+
+        # Save current to undo
+        if self._layers is not None:
+            self._undo_stack.append(_Snapshot(
+                layers=copy.deepcopy(self._layers),
+                traced=self._traced,
+                description="undo",
+            ))
+
+        snapshot = self._redo_stack.pop()
+        self._layers = snapshot.layers
+        self._traced = snapshot.traced
+        return True
+
+    @property
+    def can_undo(self) -> bool:
+        return len(self._undo_stack) > 0
+
+    @property
+    def can_redo(self) -> bool:
+        return len(self._redo_stack) > 0
 
     # -- stage 4: trace ---------------------------------------------------
 
