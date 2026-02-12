@@ -294,3 +294,53 @@ class TestCompositePreview:
         assert svg is not None
         assert "<svg" in svg
         assert "<path" in svg
+
+
+# ---------------------------------------------------------------------------
+# Test: separation mode
+# ---------------------------------------------------------------------------
+
+class TestSeparationMode:
+    def test_default_mode_is_color(self):
+        s = Session()
+        assert s.separation_mode == "color"
+
+    def test_set_mode_object(self, tmp_path):
+        png = tmp_path / "logo.png"
+        _create_two_color_png(png)
+        s = Session()
+        s.load(png)
+        s.quantize(n_colors=2)
+        color_count = s.get_layer_count()
+        s.set_separation_mode("object")
+        assert s.separation_mode == "object"
+        # Object mode should produce at least as many layers as color mode
+        # (each color region may have multiple components)
+        assert s.get_layer_count() >= color_count
+
+    def test_set_invalid_mode_raises(self):
+        s = Session()
+        with pytest.raises(ValueError, match="Invalid separation mode"):
+            s.set_separation_mode("invalid")
+
+    def test_mode_change_resets_trace(self, tmp_path):
+        png = tmp_path / "logo.png"
+        _create_two_color_png(png)
+        s = Session()
+        s.load(png)
+        s.quantize(n_colors=2)
+        s.trace()
+        assert s.is_traced
+        s.set_separation_mode("object")
+        assert not s.is_traced
+
+    def test_mode_switch_back_to_color(self, tmp_path):
+        png = tmp_path / "logo.png"
+        _create_two_color_png(png)
+        s = Session()
+        s.load(png)
+        s.quantize(n_colors=2)
+        color_count = s.get_layer_count()
+        s.set_separation_mode("object")
+        s.set_separation_mode("color")
+        assert s.get_layer_count() == color_count

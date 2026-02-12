@@ -95,7 +95,7 @@ class TestSuccessfulRuns:
             str(logo), "--colors", "1", "--output-dir", str(tmp_path)
         ])
         assert result.exit_code == 0
-        svg_files = list(tmp_path.glob("*.svg"))
+        svg_files = list(tmp_path.rglob("*.svg"))
         assert len(svg_files) >= 1
 
     def test_combined_flag(self, tmp_path):
@@ -107,7 +107,7 @@ class TestSuccessfulRuns:
             "--combined",
         ])
         assert result.exit_code == 0
-        combined = list(tmp_path.glob("*combined*"))
+        combined = list(tmp_path.rglob("*combined*"))
         assert len(combined) >= 1
 
     def test_preview_flag(self, tmp_path):
@@ -119,7 +119,7 @@ class TestSuccessfulRuns:
             "--preview",
         ])
         assert result.exit_code == 0
-        pngs = list(tmp_path.glob("*preview*"))
+        pngs = list(tmp_path.rglob("*preview*"))
         assert len(pngs) >= 1
 
     def test_bg_color_flag(self, tmp_path):
@@ -152,7 +152,7 @@ class TestBatchMode:
             str(tmp_path), "--batch", "--colors", "1",
         ])
         assert result.exit_code == 0
-        svg_files = list(tmp_path.glob("*.svg"))
+        svg_files = list(tmp_path.rglob("*.svg"))
         assert len(svg_files) >= 2
 
     def test_batch_on_file_errors(self, tmp_path):
@@ -194,7 +194,7 @@ class TestTargetColors:
             "--output-dir", str(tmp_path),
         ])
         assert result.exit_code == 0
-        svg_files = list(tmp_path.glob("*.svg"))
+        svg_files = list(tmp_path.rglob("*.svg"))
         assert len(svg_files) >= 1
 
 
@@ -215,7 +215,7 @@ class TestTurdsizeFlag:
             "--turdsize", "5",
         ])
         assert result.exit_code == 0
-        svg_files = list(tmp_path.glob("*.svg"))
+        svg_files = list(tmp_path.rglob("*.svg"))
         assert len(svg_files) >= 1
 
 

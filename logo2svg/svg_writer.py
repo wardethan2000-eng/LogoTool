@@ -94,6 +94,12 @@ def _write_single_color_svg(
     )
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
 
+    # Invisible bounding rectangle forces slicers (e.g. Bambu Studio) to
+    # register the full canvas, so all per-color SVGs align correctly when
+    # imported as separate files.
+    dwg.add(dwg.rect(insert=(0, 0), size=(_fmt(sw), _fmt(sh)),
+                      fill="none", stroke="none"))
+
     for d in svg_paths:
         dwg.add(dwg.path(d=_scale_path(d, scale), fill=hex_color, fill_rule="evenodd", stroke="none"))
 
@@ -118,7 +124,8 @@ def _write_combined_svg(
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
 
     for i, layer in enumerate(layers, start=1):
-        group = dwg.g(id=f"layer_{i}")
+        hex_clean = layer["hex_color"].lstrip("#")
+        group = dwg.g(id=f"color_{hex_clean}")
         for d in layer["svg_paths"]:
             group.add(
                 dwg.path(d=_scale_path(d, scale), fill=layer["hex_color"], fill_rule="evenodd", stroke="none")

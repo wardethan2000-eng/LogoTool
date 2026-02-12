@@ -7,6 +7,7 @@ import pytest
 
 from logo2svg.layer_separator import (
     separate_layers,
+    separate_objects,
     _morphological_cleanup,
     _filter_small_components,
     _resolve_overlaps,
@@ -191,3 +192,73 @@ class TestSeparateLayers:
         import re
         for layer in layers:
             assert re.match(r"^#[0-9A-F]{6}$", layer["hex_color"])
+
+
+# ---------------------------------------------------------------------------
+# Object separation (connected components)
+# ---------------------------------------------------------------------------
+
+class TestSeparateObjects:
+    """Tests for separate_objects."""
+
+    def test_splits_disconnected_components(self):
+        """Two disconnected blobs of the same color become two layers."""
+        labels = np.full((100, 100), 0, dtype=np.int32)
+        centers_rgb = np.array([[255, 0, 0]], dtype=np.uint8)
+        fg_mask = np.ones((100, 100), dtype=bool)
+        layers = separate_layers(labels, centers_rgb, fg_mask, min_area=0)
+        assert len(layers) == 1
+
+        # Replace with two disconnected blobs
+        layers[0]["mask"][:] = 0
+        layers[0]["mask"][10:30, 10:30] = 255
+        layers[0]["mask"][60:80, 60:80] = 255
+
+        objects = separate_objects(layers, min_area=0)
+        assert len(objects) == 2
+        for obj in objects:
+            assert obj["hex_color"] == "#FF0000"
+
+    def test_filters_small_objects(self):
+        """Objects smaller than min_area are excluded."""
+        labels = np.full((100, 100), 0, dtype=np.int32)
+        centers_rgb = np.array([[255, 0, 0]], dtype=np.uint8)
+        fg_mask = np.ones((100, 100), dtype=bool)
+        layers = separate_layers(labels, centers_rgb, fg_mask, min_area=0)
+
+        layers[0]["mask"][:] = 0
+        layers[0]["mask"][10:30, 10:30] = 255  # 400 px
+        layers[0]["mask"][60:62, 60:62] = 255  # 4 px
+
+        objects = separate_objects(layers, min_area=50)
+        assert len(objects) == 1
+
+    def test_single_component_unchanged(self):
+        """A single connected blob stays as one layer."""
+        labels = np.full((100, 100), 0, dtype=np.int32)
+        centers_rgb = np.array([[0, 0, 255]], dtype=np.uint8)
+        fg_mask = np.ones((100, 100), dtype=bool)
+        layers = separate_layers(labels, centers_rgb, fg_mask, min_area=0)
+
+        objects = separate_objects(layers, min_area=0)
+        assert len(objects) == 1
+        assert objects[0]["hex_color"] == "#0000FF"
+
+    def test_preserves_color_info(self):
+        """Separated objects inherit color info from parent."""
+        mask = np.zeros((100, 100), dtype=np.uint8)
+        mask[5:15, 5:15] = 255
+        mask[50:60, 50:60] = 255
+        layers = [{
+            "rgb": (128, 0, 128),
+            "hex_color": "#800080",
+            "color_name": "purple",
+            "mask": mask,
+            "cluster_idx": 0,
+        }]
+        objects = separate_objects(layers, min_area=0)
+        assert len(objects) == 2
+        for obj in objects:
+            assert obj["rgb"] == (128, 0, 128)
+            assert obj["hex_color"] == "#800080"
+            assert obj["color_name"] == "purple"

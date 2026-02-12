@@ -9,8 +9,6 @@ from PyInstaller.utils.hooks import (
     collect_dynamic_libs,
 )
 
-block_cipher = None
-
 # Collect all submodules that PyInstaller might miss
 hidden_imports = (
     collect_submodules("logo2svg")
@@ -46,23 +44,37 @@ a = Analysis(
     ["launcher.py"],
     pathex=["."],
     binaries=pyqt6_binaries,
-    datas=pyqt6_datas,
+    datas=pyqt6_datas + [("logo2svg/icons", "logo2svg/icons")],
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=["runtime_hook_pyqt6.py"],
-    excludes=["tkinter", "matplotlib", "IPython", "jupyter"],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=[
+        "tkinter", "matplotlib", "IPython", "jupyter",
+        "PyQt6.Qt3D", "PyQt6.QtWebEngine", "PyQt6.QtQuick",
+        "PyQt6.QtQml", "PyQt6.QtScxml",
+    ],
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data)
+
+# Native splash screen — displayed by the bootloader before Python starts,
+# so the user sees immediate feedback on launch.
+splash = Splash(
+    "logo2svg/icons/quicklayer_256.png",
+    binaries=a.binaries,
+    datas=a.datas,
+    text_pos=None,
+    text_size=12,
+    text_color="black",
+)
 
 exe = EXE(
     pyz,
     a.scripts,
+    splash,
+    getattr(splash, "binaries", []),
     [],
     exclude_binaries=True,
     name="logo2svg",
@@ -71,7 +83,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,          # windowed app — no console flash
-    icon=None,              # set to "icon.ico" if you add one later
+    icon="logo2svg/icons/quicklayer.ico",
 )
 
 coll = COLLECT(
@@ -79,6 +91,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
+    getattr(splash, "datas", []),
     strip=False,
     upx=True,
     upx_exclude=[],

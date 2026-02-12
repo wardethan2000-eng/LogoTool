@@ -17,7 +17,7 @@ import numpy as np
 
 from .color_utils import hex_to_rgb, nearest_color_name, rgb_to_hex
 from .image_loader import load_image
-from .layer_separator import separate_layers
+from .layer_separator import separate_layers, separate_objects
 from .quantizer import quantize_colors
 from .svg_writer import write_preview, write_svg_files
 from .tm_remover import remove_tm_symbols
@@ -96,6 +96,7 @@ class Session:
         self._centers_rgb = None
         self._layers = None
         self._traced = False
+        self._separation_mode: str = "color"  # "color" or "object"
 
         self.min_area = min_area
         self.alphamax = alphamax
@@ -291,6 +292,29 @@ class Session:
         self._layers[index]["hex_color"] = rgb_to_hex(r, g, b)
         self._layers[index]["color_name"] = nearest_color_name(r, g, b)
 
+    @property
+    def separation_mode(self) -> str:
+        """Current layer separation mode: ``'color'`` or ``'object'``."""
+        return self._separation_mode
+
+    def set_separation_mode(self, mode: str) -> None:
+        """Set the layer separation mode.
+
+        ``'color'`` — one layer per colour (default).
+        ``'object'`` — one layer per connected component.
+
+        Changing the mode re-builds layers from the existing quantization
+        (if available) and resets tracing.
+        """
+        if mode not in ("color", "object"):
+            raise ValueError(f"Invalid separation mode: {mode!r}")
+        if mode == self._separation_mode:
+            return
+        self._separation_mode = mode
+        if self._labels is not None:
+            self._build_layers()
+            self._traced = False
+
     def set_layer_visibility(self, index: int, visible: bool) -> None:
         """Toggle visibility (for preview composite only — does not affect export)."""
         self._require_layers("set_layer_visibility")
@@ -428,17 +452,24 @@ class Session:
             )
 
     def _build_layers(self) -> None:
-        """Build layer dicts from current labels / centers using
-        :func:`separate_layers`."""
+        """Build layer dicts from current labels / centres.
+
+        In ``'color'`` mode, uses :func:`separate_layers` (one layer per colour).
+        In ``'object'`` mode, further splits each colour into individual
+        connected components via :func:`separate_objects`.
+        """
         assert self._labels is not None
         assert self._centers_rgb is not None
         assert self._fg_mask is not None
-        self._layers = separate_layers(
+        layers = separate_layers(
             self._labels,
             self._centers_rgb,
             self._fg_mask,
             self.min_area,
         )
+        if self._separation_mode == "object":
+            layers = separate_objects(layers, self.min_area)
+        self._layers = layers
         # Ensure every layer has a visibility flag
         for layer in self._layers:
             layer.setdefault("visible", True)

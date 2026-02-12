@@ -116,20 +116,43 @@ def run_gui(file_path: str | None = None) -> int:
     splash.show()
     app.processEvents()
 
+    # Close PyInstaller native splash (if present) now that Qt splash is up
+    try:
+        import pyi_splash  # type: ignore[import-not-found]
+        pyi_splash.close()
+    except ImportError:
+        pass
+
     # ── Heavy imports happen here (cv2, sklearn, etc.) ──
+    from PyQt6.QtGui import QColor as _QColor
+
+    splash.showMessage(
+        "Loading interface\u2026",
+        Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+        _QColor("#9ca3af"),
+    )
+    app.processEvents()
+
     from .main_window import MainWindow
+    app.processEvents()
+
     from .style import STYLESHEET
+    app.processEvents()
 
     _apply_light_palette(app)
 
+    # Determine base path for bundled resources (handles frozen PyInstaller builds)
+    if getattr(sys, "frozen", False):
+        _base = Path(sys._MEIPASS) / "logo2svg"
+    else:
+        _base = Path(__file__).resolve().parent.parent
+
     # Inject correct icons directory into the stylesheet
-    icons_dir = str(
-        Path(__file__).resolve().parent.parent / "icons"
-    ).replace("\\", "/")
+    icons_dir = str(_base / "icons").replace("\\", "/")
     app.setStyleSheet(STYLESHEET.replace("__ICONS_DIR__", icons_dir))
 
     # Set application icon (taskbar / title-bar)
-    icon_path = Path(__file__).resolve().parent.parent / "icons" / "quicklayer.ico"
+    icon_path = _base / "icons" / "quicklayer.ico"
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
