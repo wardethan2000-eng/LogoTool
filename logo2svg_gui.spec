@@ -77,7 +77,7 @@ exe = EXE(
     getattr(splash, "binaries", []),
     [],
     exclude_binaries=True,
-    name="logo2svg",
+    name="QuickLayer",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -95,5 +95,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="logo2svg",
+    name="QuickLayer",
 )
