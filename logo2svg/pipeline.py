@@ -69,11 +69,12 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
             level=0,
         )
 
-    # JPEG artifact warning
-    if input_path.suffix.lower() in (".jpg", ".jpeg"):
+    # JPEG artifact handling
+    is_jpeg = input_path.suffix.lower() in (".jpg", ".jpeg")
+    if is_jpeg:
         _log(
-            "  Note: JPEG input detected. Compression artefacts may cause "
-            "spurious colour clusters. For best results use PNG input.",
+            "  Note: JPEG input detected. Applying light denoising to reduce "
+            "compression artefact colour clusters.",
             config,
         )
 
@@ -90,6 +91,11 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
     # Stage 1: Load image
     _log("  Loading image and detecting background...", config)
     session.load(input_path, bg_color=config.bg_color)
+
+    # Auto-denoise JPEG to mitigate compression artefacts before quantization
+    if is_jpeg:
+        session.run_preprocessing(denoise=True, denoise_strength=7)
+
     height, width = session.image_size
     fg_count = int(np.count_nonzero(session.fg_mask))
     _log(f"  Image size: {width}x{height}, foreground pixels: {fg_count}", config)
@@ -153,8 +159,8 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
     return output_files
 
 
-# Supported image file extensions (Pillow can load all of these)
-SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+# Supported image file extensions
+SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".svg"}
 
 
 def process_batch(input_dir: Path, config: PipelineConfig) -> list[Path]:

@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 from .color_utils import hex_to_rgb
+
+logger = logging.getLogger(__name__)
 
 
 def load_image(
     path: Path, bg_color_override: str | None = None
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Load a PNG file and separate foreground from background.
+    """Load an image file and separate foreground from background.
+
+    Handles PNG, JPEG (with EXIF rotation and CMYK conversion), WebP, BMP,
+    and SVG (rasterized at its native resolution or 1024px default).
 
     Background detection priority:
     1. If --bg-color is given, treat that color (with tolerance) as background.
@@ -22,7 +28,7 @@ def load_image(
     3. Otherwise, sample corner pixels and use the dominant corner color.
 
     Args:
-        path: Path to the PNG file.
+        path: Path to the image file.
         bg_color_override: Optional hex color string (e.g. '#FFFFFF') to treat
             as background.
 
@@ -30,7 +36,24 @@ def load_image(
         image: (H, W, 3) uint8 RGB array.
         fg_mask: (H, W) bool array, True for foreground pixels.
     """
+    # SVG primary input: rasterize to a bitmap, then process as RGBA
+    if path.suffix.lower() == ".svg":
+        return _load_svg_as_image(path, bg_color_override)
+
     pil_image = Image.open(path)
+
+    # EXIF auto-rotation: honour EXIF Orientation tag (common in phone JPEGs).
+    # This rotates the pixel data and strips the tag so downstream code
+    # sees the image the way the user expects.
+    pil_image = ImageOps.exif_transpose(pil_image)
+
+    # CMYK handling: convert to RGB.  CMYK JPEGs are sometimes produced
+    # by professional design tools — Pillow handles the conversion but
+    # we log a note since the colour mapping may not be perfect without
+    # an embedded ICC profile.
+    if pil_image.mode == "CMYK":
+        logger.info("CMYK image detected — converting to RGB")
+        pil_image = pil_image.convert("RGB")
 
     has_alpha = pil_image.mode in ("RGBA", "LA", "PA")
 
@@ -151,4 +174,46 @@ def _remove_bg_color(
         bg_mask = np.zeros((h, w), dtype=bool)
 
     return ~bg_mask
+
+
+def _load_svg_as_image(
+    path: Path, bg_color_override: str | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """Rasterize an SVG file and return it as an RGB image with foreground mask.
+
+    Uses the SVG's native dimensions scaled up to at least 1024px on the
+    longest side, preserving aspect ratio.
+    """
+    from .svg_importer import rasterize_svg, _parse_svg_dimensions
+
+    svg_w, svg_h = _parse_svg_dimensions(path)
+
+    # Scale up to at least 1024px on the longest side for good detail
+    min_size = 1024
+    if max(svg_w, svg_h) < min_size:
+        scale = min_size / max(svg_w, svg_h)
+        target_w = int(svg_w * scale)
+        target_h = int(svg_h * scale)
+    else:
+        target_w, target_h = svg_w, svg_h
+
+    rgba = rasterize_svg(path, target_w, target_h)
+    alpha = rgba[:, :, 3]
+    image = rgba[:, :, :3]  # RGB
+
+    if bg_color_override is not None:
+        bg_rgb = np.array(hex_to_rgb(bg_color_override), dtype=np.uint8)
+        fg_mask = _remove_bg_color(image, bg_rgb, tolerance=30)
+    else:
+        # Use alpha channel as foreground mask
+        fg_mask = _detect_bg_from_alpha(alpha, threshold=10)
+        fg_ratio = np.count_nonzero(fg_mask) / fg_mask.size
+        if fg_ratio > 0.99 or fg_ratio < 0.01:
+            bg_rgb = _detect_bg_from_corners(image)
+            if bg_rgb is not None:
+                fg_mask = _remove_bg_color(image, bg_rgb, tolerance=30)
+            elif fg_ratio > 0.99:
+                pass
+
+    return image, fg_mask
 

@@ -38,7 +38,7 @@ from .pipeline import PipelineConfig, process_batch, process_single
 )
 @click.option(
     "--batch", is_flag=True, default=False,
-    help="Treat INPUT_PATH as a directory and process all image files (PNG, JPEG) in it.",
+    help="Treat INPUT_PATH as a directory and process all supported image files in it.",
 )
 @click.option(
     "--alphamax", type=float, default=1.0,
@@ -148,7 +148,11 @@ def main(
     border_color: str,
     text_color: str,
 ) -> None:
-    """Convert a PNG or JPEG logo into color-separated SVG files for 3D printing.
+    """Convert a logo image into color-separated SVG files for 3D printing.
+
+    Supports PNG, JPEG, WebP, BMP, and SVG input. JPEG images are
+    automatically EXIF-rotated and lightly denoised. CMYK images are
+    converted to RGB. SVG inputs are rasterized at high resolution.
 
     Each distinct color in the logo is output as its own SVG file containing
     only the vector paths for that color. The SVGs share the same viewBox so
@@ -160,6 +164,7 @@ def main(
       logo2svg cubs_logo.png --colors 3 --output-dir ./cubs_svgs
       logo2svg logo.png --bg-color "#FFFFFF" --preview --combined
       logo2svg logo.png --target-colors "#FF0000,#FFFFFF,#000000"
+      logo2svg logo.svg --colors 4
       logo2svg ./logos/ --batch
       logo2svg logo.png --report
     """

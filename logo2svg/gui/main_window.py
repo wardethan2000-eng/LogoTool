@@ -68,9 +68,12 @@ from .workers import (
     TraceWorker,
 )
 
-IMAGE_FILTER = "Images (*.png *.jpg *.jpeg);;PNG (*.png);;JPEG (*.jpg *.jpeg)"
+IMAGE_FILTER = (
+    "All Supported Images (*.png *.jpg *.jpeg *.webp *.bmp *.svg);;"
+    "PNG (*.png);;JPEG (*.jpg *.jpeg);;WebP (*.webp);;BMP (*.bmp);;SVG (*.svg)"
+)
 SVG_FILTER = "SVG Files (*.svg)"
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".svg"}
 SVG_EXTENSIONS = {".svg"}
 
 
@@ -470,7 +473,7 @@ class MainWindow(QMainWindow):
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
                 suffix = Path(url.toLocalFile()).suffix.lower()
-                if suffix in IMAGE_EXTENSIONS or suffix in SVG_EXTENSIONS:
+                if suffix in IMAGE_EXTENSIONS:
                     event.acceptProposedAction()
                     return
 
@@ -480,9 +483,6 @@ class MainWindow(QMainWindow):
             suffix = Path(path).suffix.lower()
             if suffix in IMAGE_EXTENSIONS:
                 self.open_file(path)
-                return
-            if suffix in SVG_EXTENSIONS:
-                self._import_svg_file(path)
                 return
 
     # =================================================================

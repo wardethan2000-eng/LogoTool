@@ -251,3 +251,105 @@ class TestDetectBgFromAlpha:
         assert not fg[0, 2]  # exactly at threshold → not above → bg
         assert fg[0, 3]
         assert fg[0, 4]
+
+
+# ---------------------------------------------------------------------------
+# EXIF auto-rotation
+# ---------------------------------------------------------------------------
+
+class TestExifRotation:
+    """Tests for automatic EXIF orientation handling."""
+
+    def test_exif_rotation_applied(self, tmp_path):
+        """An image with EXIF Orientation=6 (90° CW) should be auto-rotated."""
+        # Create a 100x50 image (landscape) and save as JPEG with
+        # Orientation tag 6 (rotate 90° CW → becomes 50x100 portrait)
+        img = np.zeros((50, 100, 3), dtype=np.uint8)
+        img[:, :50] = [255, 0, 0]  # left half red
+        img[:, 50:] = [0, 0, 255]  # right half blue
+
+        pil = Image.fromarray(img, "RGB")
+        import piexif
+        exif_dict = {"0th": {piexif.ImageIFD.Orientation: 6}}
+        exif_bytes = piexif.dump(exif_dict)
+        jpeg_path = tmp_path / "rotated.jpg"
+        pil.save(str(jpeg_path), "JPEG", exif=exif_bytes, quality=95)
+
+        loaded, fg_mask = load_image(jpeg_path)
+        # After 90° CW rotation, the 50x100 image becomes 100x50
+        assert loaded.shape == (100, 50, 3)
+
+    def test_no_exif_no_change(self, tmp_path):
+        """An image without EXIF data is loaded normally."""
+        img = np.full((80, 120, 3), [200, 200, 200], dtype=np.uint8)
+        img[20:60, 30:90] = [0, 0, 0]
+        _save_rgb(tmp_path / "no_exif.png", img)
+
+        loaded, _ = load_image(tmp_path / "no_exif.png")
+        assert loaded.shape == (80, 120, 3)
+
+
+# ---------------------------------------------------------------------------
+# CMYK image handling
+# ---------------------------------------------------------------------------
+
+class TestCmykHandling:
+    """Tests for CMYK image conversion."""
+
+    def test_cmyk_image_converted_to_rgb(self, tmp_path):
+        """A CMYK image should be converted to 3-channel RGB."""
+        # Create a CMYK image (4 channels)
+        cmyk_data = np.zeros((50, 50, 4), dtype=np.uint8)
+        cmyk_data[:, :, 0] = 0    # C
+        cmyk_data[:, :, 1] = 255  # M
+        cmyk_data[:, :, 2] = 255  # Y
+        cmyk_data[:, :, 3] = 0    # K
+
+        pil_cmyk = Image.fromarray(cmyk_data, "CMYK")
+        path = tmp_path / "cmyk_test.tiff"
+        pil_cmyk.save(str(path))
+
+        loaded, fg_mask = load_image(path)
+        assert loaded.ndim == 3
+        assert loaded.shape[2] == 3  # RGB, not CMYK
+
+
+# ---------------------------------------------------------------------------
+# SVG primary input
+# ---------------------------------------------------------------------------
+
+class TestSvgPrimaryInput:
+    """Tests for loading SVG files as primary images."""
+
+    def test_svg_loads_as_rgb(self, tmp_path):
+        """An SVG file should be rasterized and returned as RGB."""
+        svg_content = """<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#FFFFFF"/>
+  <rect x="20" y="20" width="60" height="60" fill="#FF0000"/>
+</svg>"""
+        svg_path = tmp_path / "test.svg"
+        svg_path.write_text(svg_content)
+
+        loaded, fg_mask = load_image(svg_path)
+        assert loaded.ndim == 3
+        assert loaded.shape[2] == 3
+        # Image should be at least 100px on each side (scaled up)
+        assert loaded.shape[0] >= 100
+        assert loaded.shape[1] >= 100
+
+    def test_svg_fg_mask_from_alpha(self, tmp_path):
+        """SVG with transparent background should produce correct fg mask."""
+        svg_content = """<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <circle cx="100" cy="100" r="50" fill="#0000FF"/>
+</svg>"""
+        svg_path = tmp_path / "circle.svg"
+        svg_path.write_text(svg_content)
+
+        loaded, fg_mask = load_image(svg_path)
+        assert fg_mask.shape == loaded.shape[:2]
+        # Some pixels should be foreground (the circle)
+        assert np.any(fg_mask)
+        # Some pixels should be background (outside the circle)
+        assert not np.all(fg_mask)
