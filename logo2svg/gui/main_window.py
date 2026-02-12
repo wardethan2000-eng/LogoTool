@@ -2,23 +2,23 @@
 
 Layout
 ------
-┌─ Menu bar ───────────────────────────────────────────────┐
-├─ Header bar ─────────────────────────────────────────────┤
-│  QuickLayer │ [Open] [Export SVGs] │ Colors [Auto]  │ ⚙ │
-├──────────────────────────┬───────────────────────────────┤
-│  SOURCE IMAGE            │                               │
-│  (large view of original)│                               │
-│                          │       PREVIEW AREA            │
-├──────────────────────────┤  (composite with layers)      │
-│  LAYERS            [3]   │                               │
-│  ┌──────────────────┐   │  (drag and drop to open)      │
-│  │ ☑ ■ Layer 1      │   │                               │
-│  │ ☑ ■ Layer 2      │   │                               │
-│  └──────────────────┘   │                               │
-│  [Merge Selected]        │                               │
-├──────────────────────────┴───────────────────────────────┤
-│  Ready                                         ████████  │
-└──────────────────────────────────────────────────────────┘
++-- Menu bar -----------------------------------------------+
++-- Header bar ---------------------------------------------+
+|  QuickLayer | [Open] [Import SVG] [Export SVGs] | ... | G |
++-----------------------------+----------------------------+
+|  SOURCE IMAGE               |                            |
+|  (large view of original)   |       PREVIEW AREA         |
+|                             |  (composite with layers)   |
++-----------------------------+  (drag and drop to open)   |
+|  LAYERS            [3]      |  (zoom/pan support)        |
+|  +----------------------+   |                            |
+|  | V . Layer 1          |   |                            |
+|  | V . Layer 2          |   |                            |
+|  +----------------------+   |                            |
+|  [Merge Selected]           |                            |
++-----------------------------+----------------------------+
+|  Ready                                         xxxxxxxx  |
++----------------------------------------------------------+
 """
 
 from __future__ import annotations
@@ -27,14 +27,22 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QColor, QDragEnterEvent, QDropEvent, QIcon
+from PyQt6.QtGui import QAction, QColor, QDragEnterEvent, QDropEvent, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QColorDialog,
+    QDialog,
+    QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
+    QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -51,10 +59,22 @@ from .preview_panel import PreviewPanel
 from .settings_dialog import SettingsDialog
 from .source_panel import SourcePanel
 from .style import ACCENT, BG, BORDER, CARD, SURFACE, TEXT, TEXT_SEC
-from .workers import ExportWorker, LoadWorker, QuantizeWorker, TraceWorker
+from .workers import (
+    ExportWorker,
+    ImportSvgWorker,
+    LoadWorker,
+    PreprocessWorker,
+    QuantizeWorker,
+    TraceWorker,
+)
 
-IMAGE_FILTER = "Images (*.png *.jpg *.jpeg);;PNG (*.png);;JPEG (*.jpg *.jpeg)"
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+IMAGE_FILTER = (
+    "All Supported Images (*.png *.jpg *.jpeg *.webp *.bmp *.svg);;"
+    "PNG (*.png);;JPEG (*.jpg *.jpeg);;WebP (*.webp);;BMP (*.bmp);;SVG (*.svg)"
+)
+SVG_FILTER = "SVG Files (*.svg)"
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".svg"}
+SVG_EXTENSIONS = {".svg"}
 
 
 class MainWindow(QMainWindow):
@@ -66,7 +86,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
         self.setAcceptDrops(True)
 
-        # Window icon (taskbar + title bar) — handle frozen PyInstaller builds
+        # Window icon (taskbar + title bar) -- handle frozen PyInstaller builds
         if getattr(sys, "frozen", False):
             _base = Path(sys._MEIPASS) / "logo2svg"
         else:
@@ -92,6 +112,7 @@ class MainWindow(QMainWindow):
     def _build_menu_bar(self) -> None:
         mb = self.menuBar()
 
+        # -- File menu --
         file_menu = mb.addMenu("&File")
 
         open_act = QAction("&Open\u2026", self)
@@ -99,10 +120,31 @@ class MainWindow(QMainWindow):
         open_act.triggered.connect(self._on_open)
         file_menu.addAction(open_act)
 
+        import_svg_act = QAction("Import &SVG\u2026", self)
+        import_svg_act.setShortcut("Ctrl+I")
+        import_svg_act.triggered.connect(self._on_import_svg)
+        file_menu.addAction(import_svg_act)
+
         export_act = QAction("&Export SVGs\u2026", self)
         export_act.setShortcut("Ctrl+E")
         export_act.triggered.connect(self._on_export)
         file_menu.addAction(export_act)
+
+        export_png_act = QAction("Export &PNG\u2026", self)
+        export_png_act.triggered.connect(self._on_export_png)
+        file_menu.addAction(export_png_act)
+
+        file_menu.addSeparator()
+
+        save_project_act = QAction("&Save Project\u2026", self)
+        save_project_act.setShortcut("Ctrl+S")
+        save_project_act.triggered.connect(self._on_save_project)
+        file_menu.addAction(save_project_act)
+
+        load_project_act = QAction("&Load Project\u2026", self)
+        load_project_act.setShortcut("Ctrl+Shift+O")
+        load_project_act.triggered.connect(self._on_load_project)
+        file_menu.addAction(load_project_act)
 
         file_menu.addSeparator()
         quit_act = QAction("&Quit", self)
@@ -110,10 +152,70 @@ class MainWindow(QMainWindow):
         quit_act.triggered.connect(self.close)
         file_menu.addAction(quit_act)
 
+        # -- Edit menu --
         edit_menu = mb.addMenu("&Edit")
+
+        self._undo_act = QAction("&Undo", self)
+        self._undo_act.setShortcut(QKeySequence.StandardKey.Undo)
+        self._undo_act.triggered.connect(self._on_undo)
+        self._undo_act.setEnabled(False)
+        edit_menu.addAction(self._undo_act)
+
+        self._redo_act = QAction("&Redo", self)
+        self._redo_act.setShortcut(QKeySequence.StandardKey.Redo)
+        self._redo_act.triggered.connect(self._on_redo)
+        self._redo_act.setEnabled(False)
+        edit_menu.addAction(self._redo_act)
+
+        edit_menu.addSeparator()
+
         settings_act = QAction("&Settings\u2026", self)
         settings_act.triggered.connect(self._on_settings)
         edit_menu.addAction(settings_act)
+
+        # -- Tools menu --
+        tools_menu = mb.addMenu("&Tools")
+
+        add_text_act = QAction("Add &Text\u2026", self)
+        add_text_act.setShortcut("Ctrl+T")
+        add_text_act.triggered.connect(self._on_add_text)
+        tools_menu.addAction(add_text_act)
+
+        add_outline_act = QAction("Add &Outline\u2026", self)
+        add_outline_act.triggered.connect(self._on_add_outline)
+        tools_menu.addAction(add_outline_act)
+
+        add_border_act = QAction("Add Canvas &Border\u2026", self)
+        add_border_act.triggered.connect(self._on_add_canvas_border)
+        tools_menu.addAction(add_border_act)
+
+        change_color_act = QAction("&Change Layer Color\u2026", self)
+        change_color_act.triggered.connect(self._on_change_color_tool)
+        tools_menu.addAction(change_color_act)
+
+        tools_menu.addSeparator()
+
+        preprocess_act = QAction("&Image Preprocessing\u2026", self)
+        preprocess_act.triggered.connect(self._on_preprocess)
+        tools_menu.addAction(preprocess_act)
+
+        # -- View menu --
+        view_menu = mb.addMenu("&View")
+
+        zoom_in_act = QAction("Zoom &In", self)
+        zoom_in_act.setShortcut("Ctrl+=")
+        zoom_in_act.triggered.connect(lambda: self._preview.zoom_in())
+        view_menu.addAction(zoom_in_act)
+
+        zoom_out_act = QAction("Zoom &Out", self)
+        zoom_out_act.setShortcut("Ctrl+-")
+        zoom_out_act.triggered.connect(lambda: self._preview.zoom_out())
+        view_menu.addAction(zoom_out_act)
+
+        zoom_reset_act = QAction("&Reset Zoom", self)
+        zoom_reset_act.setShortcut("Ctrl+0")
+        zoom_reset_act.triggered.connect(lambda: self._preview.zoom_reset())
+        view_menu.addAction(zoom_reset_act)
 
     def _build_central(self) -> None:
         central = QWidget()
@@ -123,7 +225,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ── Header toolbar ──────────────────────────────────────
+        # -- Header toolbar --
         header = QFrame()
         header.setObjectName("headerBar")
         header.setFixedHeight(52)
@@ -151,6 +253,13 @@ class MainWindow(QMainWindow):
         open_btn.setFixedHeight(32)
         open_btn.clicked.connect(self._on_open)
         hbar.addWidget(open_btn)
+
+        # Import SVG button
+        import_svg_btn = QPushButton("Import SVG")
+        import_svg_btn.setToolTip("Import an SVG file as layers  (Ctrl+I)")
+        import_svg_btn.setFixedHeight(32)
+        import_svg_btn.clicked.connect(self._on_import_svg)
+        hbar.addWidget(import_svg_btn)
 
         # Export button
         export_btn = QPushButton("Export SVGs")
@@ -217,6 +326,46 @@ class MainWindow(QMainWindow):
         self._mode_group.addButton(self._mode_object_btn, 1)
         self._mode_group.idToggled.connect(self._on_separation_mode_changed)
 
+        hbar.addSpacing(12)
+        hbar.addWidget(self._vsep())
+        hbar.addSpacing(8)
+
+        # Undo / Redo buttons
+        self._undo_btn = QPushButton("\u21B6")
+        self._undo_btn.setProperty("cssClass", "icon")
+        self._undo_btn.setToolTip("Undo  (Ctrl+Z)")
+        self._undo_btn.setEnabled(False)
+        self._undo_btn.clicked.connect(self._on_undo)
+        hbar.addWidget(self._undo_btn)
+
+        self._redo_btn = QPushButton("\u21B7")
+        self._redo_btn.setProperty("cssClass", "icon")
+        self._redo_btn.setToolTip("Redo  (Ctrl+Y)")
+        self._redo_btn.setEnabled(False)
+        self._redo_btn.clicked.connect(self._on_redo)
+        hbar.addWidget(self._redo_btn)
+
+        hbar.addSpacing(4)
+
+        # Zoom buttons
+        zoom_out_btn = QPushButton("\u2212")
+        zoom_out_btn.setProperty("cssClass", "icon")
+        zoom_out_btn.setToolTip("Zoom out  (Ctrl+-)")
+        zoom_out_btn.clicked.connect(lambda: self._preview.zoom_out())
+        hbar.addWidget(zoom_out_btn)
+
+        zoom_reset_btn = QPushButton("\u2609")
+        zoom_reset_btn.setProperty("cssClass", "icon")
+        zoom_reset_btn.setToolTip("Reset zoom  (Ctrl+0)")
+        zoom_reset_btn.clicked.connect(lambda: self._preview.zoom_reset())
+        hbar.addWidget(zoom_reset_btn)
+
+        zoom_in_btn = QPushButton("+")
+        zoom_in_btn.setProperty("cssClass", "icon")
+        zoom_in_btn.setToolTip("Zoom in  (Ctrl+=)")
+        zoom_in_btn.clicked.connect(lambda: self._preview.zoom_in())
+        hbar.addWidget(zoom_in_btn)
+
         hbar.addStretch()
 
         # Settings gear
@@ -236,7 +385,7 @@ class MainWindow(QMainWindow):
 
         root.addWidget(header)
 
-        # ── Main content area (splitter) ────────────────────────
+        # -- Main content area (splitter) --
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_splitter.setHandleWidth(1)
 
@@ -267,6 +416,10 @@ class MainWindow(QMainWindow):
         )
         self._layer_panel.delete_requested.connect(self._on_delete_layer)
         self._layer_panel.merge_requested.connect(self._on_merge_layers)
+        self._layer_panel.move_up_requested.connect(self._on_move_layer_up)
+        self._layer_panel.move_down_requested.connect(self._on_move_layer_down)
+        self._layer_panel.duplicate_requested.connect(self._on_duplicate_layer)
+        self._layer_panel.rename_requested.connect(self._on_rename_layer)
         left_splitter.addWidget(self._layer_panel)
 
         # Source image gets more space than layers
@@ -319,14 +472,16 @@ class MainWindow(QMainWindow):
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if Path(url.toLocalFile()).suffix.lower() in IMAGE_EXTENSIONS:
+                suffix = Path(url.toLocalFile()).suffix.lower()
+                if suffix in IMAGE_EXTENSIONS:
                     event.acceptProposedAction()
                     return
 
     def dropEvent(self, event: QDropEvent) -> None:
         for url in event.mimeData().urls():
             path = url.toLocalFile()
-            if Path(path).suffix.lower() in IMAGE_EXTENSIONS:
+            suffix = Path(path).suffix.lower()
+            if suffix in IMAGE_EXTENSIONS:
                 self.open_file(path)
                 return
 
@@ -358,6 +513,34 @@ class MainWindow(QMainWindow):
         )
         if path:
             self.open_file(path)
+
+    def _on_import_svg(self) -> None:
+        """Import an external SVG as new layers."""
+        if not self._session.is_loaded:
+            QMessageBox.information(
+                self, "Import SVG",
+                "Open an image first to set the canvas size."
+            )
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import SVG", "", SVG_FILTER
+        )
+        if path:
+            self._import_svg_file(path)
+
+    def _import_svg_file(self, path: str) -> None:
+        if not self._session.is_loaded:
+            QMessageBox.information(
+                self, "Import SVG",
+                "Open an image first to set the canvas size."
+            )
+            return
+        self._set_busy(True, f"Importing {Path(path).name}\u2026")
+        worker = ImportSvgWorker(self._session, path)
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_import_svg_done)
+        worker.error.connect(self._on_worker_error)
+        self._start_worker(worker)
 
     def _on_export(self) -> None:
         if not self._session.is_quantized:
@@ -437,6 +620,157 @@ class MainWindow(QMainWindow):
             self._run_trace()
 
     # =================================================================
+    #  Undo / Redo
+    # =================================================================
+
+    def _on_undo(self) -> None:
+        if self._session.undo():
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+
+    def _on_redo(self) -> None:
+        if self._session.redo():
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+
+    def _update_undo_redo_state(self) -> None:
+        self._undo_btn.setEnabled(self._session.can_undo)
+        self._redo_btn.setEnabled(self._session.can_redo)
+        self._undo_act.setEnabled(self._session.can_undo)
+        self._redo_act.setEnabled(self._session.can_redo)
+
+    # =================================================================
+    #  Tools: Text, Outline, Border, Change Color, Preprocessing
+    # =================================================================
+
+    def _on_add_text(self) -> None:
+        """Show a dialog to add text as a new layer."""
+        if not self._session.is_loaded:
+            QMessageBox.information(
+                self, "Add Text", "Open an image first."
+            )
+            return
+
+        dlg = _TextDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._session.add_text(
+            dlg.text_value,
+            color=dlg.color_value,
+            font_scale=dlg.font_scale_value,
+            thickness=dlg.thickness_value,
+        )
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_add_outline(self) -> None:
+        """Add an outline to a selected layer."""
+        if not self._session.is_quantized:
+            QMessageBox.information(
+                self, "Add Outline",
+                "Quantize an image first to create layers."
+            )
+            return
+
+        layers = self._session.get_layers()
+        if not layers:
+            return
+
+        dlg = _OutlineDialog(len(layers), self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._session.add_outline(
+            dlg.layer_index, dlg.width_value, dlg.color_value
+        )
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_add_canvas_border(self) -> None:
+        """Add a border around the entire canvas."""
+        if not self._session.is_loaded:
+            QMessageBox.information(
+                self, "Add Border", "Open an image first."
+            )
+            return
+
+        dlg = _BorderDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._session.add_canvas_border(
+            dlg.width_value, dlg.color_value
+        )
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_change_color_tool(self) -> None:
+        """Change the color of a specific layer."""
+        if not self._session.is_quantized:
+            QMessageBox.information(
+                self, "Change Color",
+                "Quantize an image first to create layers."
+            )
+            return
+
+        layers = self._session.get_layers()
+        if not layers:
+            return
+
+        # Ask which layer
+        names = [f"Layer {i + 1} ({l.hex_color})" for i, l in enumerate(layers)]
+        name, ok = QInputDialog.getItem(
+            self, "Change Color", "Select layer:", names, 0, False
+        )
+        if not ok:
+            return
+        idx = names.index(name)
+
+        current = QColor(layers[idx].hex_color)
+        color = QColorDialog.getColor(current, self, "Pick New Color")
+        if color.isValid():
+            self._session.change_color(idx, color.name())
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+
+    def _on_preprocess(self) -> None:
+        """Show preprocessing options dialog."""
+        if not self._session.is_loaded:
+            QMessageBox.information(
+                self, "Preprocessing", "Open an image first."
+            )
+            return
+
+        # Analyze first
+        report = self._session.analyze_image()
+
+        dlg = _PreprocessDialog(report, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if not dlg.contrast and not dlg.sharpen and not dlg.denoise:
+            return
+
+        self._set_busy(True, "Preprocessing\u2026")
+        worker = PreprocessWorker(
+            self._session,
+            contrast=dlg.contrast,
+            sharpen=dlg.sharpen,
+            denoise=dlg.denoise,
+        )
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_preprocess_done)
+        worker.error.connect(self._on_worker_error)
+        self._start_worker(worker)
+
+    # =================================================================
     #  Layer-panel signal handlers
     # =================================================================
 
@@ -454,16 +788,93 @@ class MainWindow(QMainWindow):
             self._session.change_color(index, color.name())
             self._refresh_layers()
             self._refresh_preview()
+            self._update_undo_redo_state()
 
     def _on_delete_layer(self, index: int) -> None:
         self._session.remove_color(index)
         self._refresh_layers()
         self._refresh_preview()
+        self._update_undo_redo_state()
 
     def _on_merge_layers(self, indices: list[int]) -> None:
         self._session.merge_colors(indices)
         self._refresh_layers()
         self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_move_layer_up(self, index: int) -> None:
+        if self._session.move_layer_up(index):
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+
+    def _on_move_layer_down(self, index: int) -> None:
+        if self._session.move_layer_down(index):
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+
+    def _on_duplicate_layer(self, index: int) -> None:
+        self._session.duplicate_layer(index)
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_rename_layer(self, index: int, name: str) -> None:
+        self._session.rename_layer(index, name)
+
+    # =================================================================
+    #  Save / Load / Export PNG
+    # =================================================================
+
+    def _on_save_project(self) -> None:
+        if not self._session.is_loaded:
+            QMessageBox.information(
+                self, "Save Project", "Open an image first."
+            )
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Project", "", "QuickLayer Project (*.qlp)"
+        )
+        if path:
+            try:
+                self._session.save_project(path)
+                self._status_label.setText(f"Project saved: {Path(path).name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", str(e))
+
+    def _on_load_project(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Project", "", "QuickLayer Project (*.qlp)"
+        )
+        if path:
+            try:
+                self._session.load_project(path)
+                self._source_panel.set_image(
+                    self._session.image, self._session.path
+                )
+                self._refresh_layers()
+                self._refresh_preview()
+                self._update_undo_redo_state()
+                self._status_label.setText(f"Project loaded: {Path(path).name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Load Error", str(e))
+
+    def _on_export_png(self) -> None:
+        if not self._session.is_quantized:
+            QMessageBox.information(
+                self, "Export PNG", "Open and quantize an image first."
+            )
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export PNG", "", "PNG Image (*.png)"
+        )
+        if path:
+            try:
+                self._session.export_png(path)
+                self._status_label.setText(f"PNG exported: {Path(path).name}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Error", str(e))
 
     # =================================================================
     #  Worker callbacks
@@ -490,6 +901,7 @@ class MainWindow(QMainWindow):
             self._color_spin.blockSignals(False)
         self._refresh_layers()
         self._run_trace()
+        self._update_undo_redo_state()
 
     def _on_trace_done(self, _result) -> None:
         self._set_busy(False, "Ready")
@@ -501,6 +913,27 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self, "Export Complete", f"{n} file(s) written."
         )
+
+    def _on_import_svg_done(self, count) -> None:
+        self._set_busy(False, f"Imported {count} layer(s)")
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_preprocess_done(self, report) -> None:
+        self._set_busy(False, "Preprocessed")
+        self._source_panel.set_image(
+            self._session.image, self._session.path
+        )
+        # Re-quantize with the enhanced image
+        self._run_quantize()
+
+        # Show report if there are recommendations
+        if report and report.recommendations:
+            msg = "\n".join(f"- {r}" for r in report.recommendations)
+            QMessageBox.information(
+                self, "Image Analysis", f"Recommendations:\n{msg}"
+            )
 
     def _on_worker_error(self, message: str) -> None:
         self._set_busy(False, "Error")
@@ -561,3 +994,300 @@ class MainWindow(QMainWindow):
         """Keep a reference so the worker isn't garbage-collected."""
         self._worker = worker
         worker.start()
+
+
+# =====================================================================
+#  Tool Dialogs
+# =====================================================================
+
+class _TextDialog(QDialog):
+    """Dialog for adding text to the canvas."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Text")
+        self.setMinimumWidth(380)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 16)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self._text_edit = QLineEdit()
+        self._text_edit.setPlaceholderText("Enter text...")
+        form.addRow("Text:", self._text_edit)
+
+        self._font_scale = QDoubleSpinBox()
+        self._font_scale.setRange(0.5, 20.0)
+        self._font_scale.setValue(2.0)
+        self._font_scale.setSingleStep(0.5)
+        form.addRow("Font scale:", self._font_scale)
+
+        self._thickness = QSpinBox()
+        self._thickness.setRange(1, 20)
+        self._thickness.setValue(3)
+        form.addRow("Thickness:", self._thickness)
+
+        self._color_btn = QPushButton("#000000")
+        self._color_btn.setFixedHeight(32)
+        self._color_hex = "#000000"
+        self._color_btn.clicked.connect(self._pick_color)
+        form.addRow("Color:", self._color_btn)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _pick_color(self):
+        color = QColorDialog.getColor(QColor(self._color_hex), self)
+        if color.isValid():
+            self._color_hex = color.name()
+            self._color_btn.setText(self._color_hex)
+
+    @property
+    def text_value(self) -> str:
+        return self._text_edit.text()
+
+    @property
+    def font_scale_value(self) -> float:
+        return self._font_scale.value()
+
+    @property
+    def thickness_value(self) -> int:
+        return self._thickness.value()
+
+    @property
+    def color_value(self) -> str:
+        return self._color_hex
+
+
+class _OutlineDialog(QDialog):
+    """Dialog for adding an outline to a layer."""
+
+    def __init__(self, num_layers: int, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Outline")
+        self.setMinimumWidth(380)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 16)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self._layer_spin = QSpinBox()
+        self._layer_spin.setRange(1, num_layers)
+        self._layer_spin.setValue(1)
+        form.addRow("Layer:", self._layer_spin)
+
+        self._width_spin = QSpinBox()
+        self._width_spin.setRange(1, 50)
+        self._width_spin.setValue(3)
+        form.addRow("Width (px):", self._width_spin)
+
+        self._color_btn = QPushButton("#000000")
+        self._color_btn.setFixedHeight(32)
+        self._color_hex = "#000000"
+        self._color_btn.clicked.connect(self._pick_color)
+        form.addRow("Color:", self._color_btn)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _pick_color(self):
+        color = QColorDialog.getColor(QColor(self._color_hex), self)
+        if color.isValid():
+            self._color_hex = color.name()
+            self._color_btn.setText(self._color_hex)
+
+    @property
+    def layer_index(self) -> int:
+        return self._layer_spin.value() - 1
+
+    @property
+    def width_value(self) -> int:
+        return self._width_spin.value()
+
+    @property
+    def color_value(self) -> str:
+        return self._color_hex
+
+
+class _BorderDialog(QDialog):
+    """Dialog for adding a canvas border."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Canvas Border")
+        self.setMinimumWidth(380)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 16)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self._width_spin = QSpinBox()
+        self._width_spin.setRange(1, 200)
+        self._width_spin.setValue(10)
+        form.addRow("Width (px):", self._width_spin)
+
+        self._color_btn = QPushButton("#000000")
+        self._color_btn.setFixedHeight(32)
+        self._color_hex = "#000000"
+        self._color_btn.clicked.connect(self._pick_color)
+        form.addRow("Color:", self._color_btn)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _pick_color(self):
+        color = QColorDialog.getColor(QColor(self._color_hex), self)
+        if color.isValid():
+            self._color_hex = color.name()
+            self._color_btn.setText(self._color_hex)
+
+    @property
+    def width_value(self) -> int:
+        return self._width_spin.value()
+
+    @property
+    def color_value(self) -> str:
+        return self._color_hex
+
+
+class _PreprocessDialog(QDialog):
+    """Dialog for image preprocessing options."""
+
+    def __init__(self, report, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Image Preprocessing")
+        self.setMinimumWidth(440)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 20)
+
+        title = QLabel("Smart Image Preprocessing")
+        title.setStyleSheet(
+            f"font-size: 18px; font-weight: 700; color: {TEXT}; "
+            "margin-bottom: 4px;"
+        )
+        layout.addWidget(title)
+
+        subtitle = QLabel("Enhance image quality before color quantization")
+        subtitle.setStyleSheet(
+            f"font-size: 13px; color: {TEXT_SEC}; margin-bottom: 8px;"
+        )
+        layout.addWidget(subtitle)
+
+        # Show analysis results
+        if report and report.recommendations:
+            rec_group = QGroupBox("Analysis Results")
+            rec_layout = QVBoxLayout(rec_group)
+            for rec in report.recommendations:
+                lbl = QLabel(f"- {rec}")
+                lbl.setWordWrap(True)
+                lbl.setStyleSheet(f"color: {TEXT_SEC}; font-size: 12px;")
+                rec_layout.addWidget(lbl)
+            layout.addWidget(rec_group)
+
+        # Enhancement options
+        enhance_group = QGroupBox("Enhancement Options")
+        enhance_form = QFormLayout(enhance_group)
+        enhance_form.setSpacing(12)
+
+        self._contrast_cb = QCheckBox("Contrast enhancement (CLAHE)")
+        self._contrast_cb.setToolTip(
+            "Improve contrast for washed-out images"
+        )
+        if report and report.contrast_low:
+            self._contrast_cb.setChecked(True)
+        enhance_form.addRow(self._contrast_cb)
+
+        self._sharpen_cb = QCheckBox("Edge sharpening")
+        self._sharpen_cb.setToolTip(
+            "Sharpen edges for cleaner vector tracing"
+        )
+        enhance_form.addRow(self._sharpen_cb)
+
+        self._denoise_cb = QCheckBox("Noise reduction")
+        self._denoise_cb.setToolTip(
+            "Reduce photo noise for cleaner color separation"
+        )
+        if report and report.noise_level > 30.0:
+            self._denoise_cb.setChecked(True)
+        enhance_form.addRow(self._denoise_cb)
+
+        layout.addWidget(enhance_group)
+
+        # Background warning
+        if report and report.bg_blur_detected:
+            warn_label = QLabel(
+                f"Warning: Background is not uniform "
+                f"(uniformity: {report.bg_uniformity:.0%}). "
+                f"Consider using a solid background colour override."
+            )
+            warn_label.setWordWrap(True)
+            warn_label.setStyleSheet(
+                "color: #ca8a04; font-size: 12px; padding: 8px; "
+                "background: #fef3c7; border-radius: 4px;"
+            )
+            layout.addWidget(warn_label)
+
+        layout.addStretch()
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_btn is not None:
+            ok_btn.setProperty("cssClass", "primary")
+            ok_btn.style().unpolish(ok_btn)
+            ok_btn.style().polish(ok_btn)
+
+        layout.addWidget(buttons)
+
+    @property
+    def contrast(self) -> bool:
+        return self._contrast_cb.isChecked()
+
+    @property
+    def sharpen(self) -> bool:
+        return self._sharpen_cb.isChecked()
+
+    @property
+    def denoise(self) -> bool:
+        return self._denoise_cb.isChecked()
