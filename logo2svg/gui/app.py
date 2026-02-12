@@ -112,7 +112,16 @@ def run_gui(file_path: str | None = None) -> int:
 
     # ── Show splash IMMEDIATELY, before heavy imports ──
     splash = QSplashScreen(_create_splash_pixmap(),
-                           Qt.WindowType.WindowStaysOnTopHint)
+                           Qt.WindowType.WindowStaysOnTopHint
+                           | Qt.WindowType.FramelessWindowHint)
+    # Centre the splash on the primary screen so it doesn't briefly
+    # appear at (0, 0) before the window manager moves it.
+    screen_geo = app.primaryScreen().availableGeometry()
+    splash_size = splash.size()
+    splash.move(
+        screen_geo.x() + (screen_geo.width() - splash_size.width()) // 2,
+        screen_geo.y() + (screen_geo.height() - splash_size.height()) // 2,
+    )
     splash.show()
     app.processEvents()
 

@@ -31,6 +31,8 @@ gui = [
 
 [project.scripts]
 logo2svg = "logo2svg.cli:main"
+
+[project.gui-scripts]
 logo2svg-gui = "logo2svg.gui.app:run_gui_cli"
 
 [tool.hatch.version]
