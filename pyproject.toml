@@ -31,6 +31,7 @@ gui = [
 
 [project.scripts]
 logo2svg = "logo2svg.cli:main"
+logo2svg-clone = "logo2svg.cli_clone:clone_parts_cli"
 
 [project.gui-scripts]
 logo2svg-gui = "logo2svg.gui.app:run_gui_cli"

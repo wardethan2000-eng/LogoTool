@@ -62,6 +62,7 @@ from .settings_dialog import SettingsDialog
 from .source_panel import SourcePanel
 from .style import ACCENT, BG, BORDER, CARD, SURFACE, TEXT, TEXT_SEC
 from .workers import (
+    ClonePartsWorker,
     ExportWorker,
     ImportSvgWorker,
     LoadWorker,
@@ -136,6 +137,11 @@ class MainWindow(QMainWindow):
         export_3mf_act.setShortcut("Ctrl+Shift+E")
         export_3mf_act.triggered.connect(self._on_export_3mf)
         file_menu.addAction(export_3mf_act)
+
+        clone_parts_act = QAction("Clone &Parts into 3MF\u2026", self)
+        clone_parts_act.setShortcut("Ctrl+Shift+P")
+        clone_parts_act.triggered.connect(self._on_clone_parts)
+        file_menu.addAction(clone_parts_act)
 
         export_png_act = QAction("Export &PNG\u2026", self)
         export_png_act.triggered.connect(self._on_export_png)
@@ -301,12 +307,23 @@ class MainWindow(QMainWindow):
         # Export 3MF button
         export_3mf_btn = QPushButton("Export 3MF")
         export_3mf_btn.setToolTip(
-            "Export a 3MF file for Bambu Studio — each color becomes a\n"
+            "Export a 3MF file for Bambu Studio \u2014 each color becomes a\n"
             "separate object with its filament pre-assigned  (Ctrl+Shift+E)"
         )
         export_3mf_btn.setFixedHeight(32)
         export_3mf_btn.clicked.connect(self._on_export_3mf)
         hbar.addWidget(export_3mf_btn)
+
+        # Clone Parts button
+        clone_btn = QPushButton("Clone Parts")
+        clone_btn.setToolTip(
+            "Inject aligned colour layers into a Bambu Studio project.\n"
+            "Position ONE layer on the model, save the project, then\n"
+            "use this to add all remaining colours  (Ctrl+Shift+P)"
+        )
+        clone_btn.setFixedHeight(32)
+        clone_btn.clicked.connect(self._on_clone_parts)
+        hbar.addWidget(clone_btn)
 
         hbar.addSpacing(12)
         hbar.addWidget(self._vsep())
@@ -618,7 +635,7 @@ class MainWindow(QMainWindow):
             )
             return
         out_dir = QFileDialog.getExistingDirectory(
-            self, "Export 3MF — Choose Directory"
+            self, "Export 3MF \u2014 Choose Directory"
         )
         if not out_dir:
             return
@@ -630,6 +647,50 @@ class MainWindow(QMainWindow):
         worker.finished.connect(self._on_export_done)
         worker.error.connect(self._on_worker_error)
         self._start_worker(worker)
+
+    def _on_clone_parts(self) -> None:
+        """Clone colour layers into a Bambu Studio 3MF project."""
+        # Step 1: select the Bambu Studio project 3MF
+        project, _ = QFileDialog.getOpenFileName(
+            self, "Select Bambu Studio Project",
+            "", "3MF Files (*.3mf)",
+        )
+        if not project:
+            return
+
+        # Step 2: select the layers directory
+        layers_dir = QFileDialog.getExistingDirectory(
+            self, "Select SVG Layers Directory",
+        )
+        if not layers_dir:
+            return
+
+        # Step 3: choose output file
+        default_out = str(
+            Path(project).with_stem(Path(project).stem + "_multicolor")
+        )
+        output, _ = QFileDialog.getSaveFileName(
+            self, "Save Modified Project",
+            default_out, "3MF Files (*.3mf)",
+        )
+        if not output:
+            return
+
+        self._set_busy(True, "Cloning parts\u2026")
+        worker = ClonePartsWorker(project, layers_dir, output)
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_clone_parts_done)
+        worker.error.connect(self._on_worker_error)
+        self._start_worker(worker)
+
+    def _on_clone_parts_done(self, output_path) -> None:
+        self._set_busy(False, "Clone complete")
+        QMessageBox.information(
+            self, "Clone Parts",
+            f"Multi-colour project saved to:\n{output_path}\n\n"
+            "Open this file in Bambu Studio \u2014 all colour layers\n"
+            "are aligned with the part you positioned.",
+        )
 
     def _on_settings(self) -> None:
         dlg = SettingsDialog(

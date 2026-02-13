@@ -177,3 +177,42 @@ class ImportSvgWorker(_BaseWorker):
         )
         self.progress.emit(f"Imported {count} layer(s) from SVG")
         return count
+
+
+class ClonePartsWorker(QThread):
+    """Inject aligned colour layers into a Bambu Studio 3MF project.
+
+    Does not require a Session — works directly with files.
+    """
+
+    finished = pyqtSignal(object)
+    error = pyqtSignal(str)
+    progress = pyqtSignal(str)
+
+    def __init__(
+        self,
+        project_3mf: str,
+        layers_dir: str,
+        output_3mf: str | None = None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._project_3mf = project_3mf
+        self._layers_dir = layers_dir
+        self._output_3mf = output_3mf
+
+    def run(self) -> None:
+        try:
+            from ..clone_parts import clone_parts
+
+            self.progress.emit("Cloning parts\u2026")
+            out = clone_parts(
+                self._project_3mf,
+                self._layers_dir,
+                self._output_3mf,
+            )
+            self.progress.emit(f"Written: {out.name}")
+            self.finished.emit(out)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
