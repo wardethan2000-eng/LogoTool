@@ -183,11 +183,16 @@ class MainWindow(QMainWindow):
         add_text_act.triggered.connect(self._on_add_text)
         tools_menu.addAction(add_text_act)
 
-        add_outline_act = QAction("Add &Outline\u2026", self)
+        add_outline_act = QAction("Add &Outline to Layer\u2026", self)
         add_outline_act.triggered.connect(self._on_add_outline)
         tools_menu.addAction(add_outline_act)
 
-        add_border_act = QAction("Add Canvas &Border\u2026", self)
+        add_obj_border_act = QAction("Add &Border to Selection\u2026", self)
+        add_obj_border_act.setShortcut("Ctrl+B")
+        add_obj_border_act.triggered.connect(self._on_add_object_border)
+        tools_menu.addAction(add_obj_border_act)
+
+        add_border_act = QAction("Add Ca&nvas Border\u2026", self)
         add_border_act.triggered.connect(self._on_add_canvas_border)
         tools_menu.addAction(add_border_act)
 
@@ -374,9 +379,16 @@ class MainWindow(QMainWindow):
         zoom_out_btn.clicked.connect(lambda: self._preview.zoom_out())
         hbar.addWidget(zoom_out_btn)
 
-        zoom_reset_btn = QPushButton("\u2609")
+        zoom_reset_btn = QPushButton("Fit")
         zoom_reset_btn.setProperty("cssClass", "icon")
-        zoom_reset_btn.setToolTip("Reset zoom  (Ctrl+0)")
+        zoom_reset_btn.setToolTip("Fit to window  (Ctrl+0)")
+        zoom_reset_btn.setStyleSheet(
+            f"QPushButton {{ font-size: 10px; font-weight: 600; background: transparent; "
+            f"border: 1px solid transparent; border-radius: 4px; "
+            f"min-width: 28px; max-width: 32px; min-height: 28px; max-height: 28px; "
+            f"color: {TEXT_SEC}; padding: 2px; }}"
+            f"QPushButton:hover {{ background-color: {CARD}; border-color: {BORDER}; color: {TEXT}; }}"
+        )
         zoom_reset_btn.clicked.connect(lambda: self._preview.zoom_reset())
         hbar.addWidget(zoom_reset_btn)
 
@@ -452,6 +464,11 @@ class MainWindow(QMainWindow):
 
         # Right: preview panel (main focus, stretches)
         self._preview = PreviewPanel()
+        self._preview.set_hit_test_callback(self._hit_test_layer)
+        self._preview.set_bbox_callback(self._get_layer_bbox)
+        self._preview.layer_selected.connect(self._on_canvas_layer_selected)
+        self._preview.layer_moved.connect(self._on_canvas_layer_moved)
+        self._preview.layer_double_clicked.connect(self._on_canvas_layer_double_clicked)
         main_splitter.addWidget(self._preview)
 
         # Stretch factors: sidebar stays, preview stretches
@@ -711,6 +728,37 @@ class MainWindow(QMainWindow):
         self._refresh_preview()
         self._update_undo_redo_state()
 
+    def _on_add_object_border(self) -> None:
+        """Add a border around selected layers (visible/checked layers)."""
+        if not self._session.is_quantized:
+            QMessageBox.information(
+                self, "Add Border",
+                "Quantize an image first to create layers."
+            )
+            return
+
+        # Use checked (visible) layers from the layer panel as selection
+        selected = self._layer_panel.get_selected_indices()
+        if not selected:
+            QMessageBox.information(
+                self, "Add Border",
+                "Check (select) one or more layers in the layer panel first.\n\n"
+                "The border will be drawn around the combined shape of all "
+                "selected layers."
+            )
+            return
+
+        dlg = _ObjectBorderDialog(selected, self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._session.add_object_border(
+            selected, dlg.width_value, dlg.color_value
+        )
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
     def _on_add_canvas_border(self) -> None:
         """Add a border around the entire canvas."""
         if not self._session.is_loaded:
@@ -842,6 +890,80 @@ class MainWindow(QMainWindow):
 
     def _on_rename_layer(self, index: int, name: str) -> None:
         self._session.rename_layer(index, name)
+
+    # =================================================================
+    #  Canvas interaction handlers (click-to-select, drag-to-move)
+    # =================================================================
+
+    def _hit_test_layer(self, x: int, y: int):
+        """Callback for PreviewPanel: returns layer index at (x, y) or None."""
+        return self._session.layer_at_pixel(x, y)
+
+    def _get_layer_bbox(self, index: int):
+        """Callback for PreviewPanel: returns (x, y, w, h) or None."""
+        return self._session.get_layer_bbox(index)
+
+    def _on_canvas_layer_selected(self, index: int) -> None:
+        """A layer was selected (or deselected with -1) on the canvas."""
+        if index >= 0:
+            self._status_label.setText(
+                f"Selected: Layer {index + 1}  "
+                f"(drag to move, double-click to edit)"
+            )
+        else:
+            layers = self._session.get_layers()
+            if layers:
+                self._status_label.setText("Click a layer on the canvas to select it")
+            else:
+                self._status_label.setText("Ready")
+
+    def _on_canvas_layer_moved(self, index: int, dx: int, dy: int) -> None:
+        """A layer was dragged on the canvas by (dx, dy) pixels."""
+        self._session.move_layer_pixels(index, dx, dy)
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
+    def _on_canvas_layer_double_clicked(self, index: int) -> None:
+        """A layer was double-clicked on the canvas — edit if it's a text layer."""
+        layers = self._session.get_layers()
+        if index >= len(layers):
+            return
+        layer_info = layers[index]
+
+        # Check if it's a text layer
+        if layer_info.name.startswith('Text: "'):
+            self._edit_text_layer(index, layer_info)
+        else:
+            # For non-text layers, show info or open colour picker
+            self._on_color_picker(index)
+
+    def _edit_text_layer(self, index: int, layer_info) -> None:
+        """Open the text edit dialog for an existing text layer."""
+        # Extract current text from layer name
+        current_text = ""
+        if layer_info.name.startswith('Text: "') and layer_info.name.endswith('"'):
+            current_text = layer_info.name[7:-1]
+
+        dlg = _TextDialog(self)
+        dlg.setWindowTitle("Edit Text")
+        dlg._text_edit.setText(current_text)
+        dlg._color_hex = layer_info.hex_color
+        dlg._color_btn.setText(layer_info.hex_color)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._session.edit_text_layer(
+            index,
+            dlg.text_value,
+            color=dlg.color_value,
+            font_scale=dlg.font_scale_value,
+            thickness=dlg.thickness_value,
+        )
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
 
     # =================================================================
     #  Save / Load / Export PNG
@@ -1171,6 +1293,66 @@ class _BorderDialog(QDialog):
         self._width_spin.setRange(1, 200)
         self._width_spin.setValue(10)
         form.addRow("Width (px):", self._width_spin)
+
+        self._color_btn = QPushButton("#000000")
+        self._color_btn.setFixedHeight(32)
+        self._color_hex = "#000000"
+        self._color_btn.clicked.connect(self._pick_color)
+        form.addRow("Color:", self._color_btn)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _pick_color(self):
+        color = QColorDialog.getColor(QColor(self._color_hex), self)
+        if color.isValid():
+            self._color_hex = color.name()
+            self._color_btn.setText(self._color_hex)
+
+    @property
+    def width_value(self) -> int:
+        return self._width_spin.value()
+
+    @property
+    def color_value(self) -> str:
+        return self._color_hex
+
+
+class _ObjectBorderDialog(QDialog):
+    """Dialog for adding a border around selected layers."""
+
+    def __init__(self, selected_indices: list[int], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Border to Selection")
+        self.setMinimumWidth(380)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 16)
+
+        info = QLabel(
+            f"A border will be drawn around {len(selected_indices)} "
+            f"selected layer(s)."
+        )
+        info.setWordWrap(True)
+        info.setStyleSheet(f"color: {TEXT_SEC}; font-size: 12px; margin-bottom: 4px;")
+        layout.addWidget(info)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self._width_spin = QSpinBox()
+        self._width_spin.setRange(1, 50)
+        self._width_spin.setValue(3)
+        form.addRow("Border width (px):", self._width_spin)
 
         self._color_btn = QPushButton("#000000")
         self._color_btn.setFixedHeight(32)

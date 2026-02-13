@@ -392,6 +392,81 @@ class Session:
             raise IndexError(f"Layer index {index} out of range.")
         self._layers[index]["visible"] = visible
 
+    # -- layer hit-test / move --------------------------------------------
+
+    def layer_at_pixel(self, x: int, y: int) -> int | None:
+        """Return the index of the topmost visible layer at pixel (x, y).
+
+        Iterates layers from top (last) to bottom (first) and returns the
+        first layer whose mask is non-zero at the given coordinates.
+        Returns ``None`` if no layer covers that pixel.
+        """
+        if self._layers is None or self._image is None:
+            return None
+        h, w = self._image.shape[:2]
+        if not (0 <= x < w and 0 <= y < h):
+            return None
+        for i in range(len(self._layers) - 1, -1, -1):
+            layer = self._layers[i]
+            if not layer.get("visible", True):
+                continue
+            if layer["mask"][y, x] > 0:
+                return i
+        return None
+
+    def move_layer_pixels(self, index: int, dx: int, dy: int) -> None:
+        """Translate a layer's mask by (dx, dy) pixels.
+
+        Pixels that shift off-canvas are clipped.  Saves an undo snapshot.
+        """
+        self._require_layers("move_layer_pixels")
+        if not 0 <= index < len(self._layers):
+            raise IndexError(f"Layer index {index} out of range.")
+
+        self._save_undo("Move layer")
+        mask = self._layers[index]["mask"]
+        h, w = mask.shape
+
+        # Use numpy roll + zero-fill for the translation
+        new_mask = np.zeros_like(mask)
+
+        # Compute source and destination slices
+        src_y_start = max(0, -dy)
+        src_y_end = min(h, h - dy)
+        src_x_start = max(0, -dx)
+        src_x_end = min(w, w - dx)
+
+        dst_y_start = max(0, dy)
+        dst_y_end = min(h, h + dy)
+        dst_x_start = max(0, dx)
+        dst_x_end = min(w, w + dx)
+
+        if (src_y_end > src_y_start and src_x_end > src_x_start
+                and dst_y_end > dst_y_start and dst_x_end > dst_x_start):
+            new_mask[dst_y_start:dst_y_end, dst_x_start:dst_x_end] = \
+                mask[src_y_start:src_y_end, src_x_start:src_x_end]
+
+        self._layers[index]["mask"] = new_mask
+        self._resolve_overlaps()
+        self._traced = False
+
+    def get_layer_bbox(self, index: int) -> tuple[int, int, int, int] | None:
+        """Return the bounding box (x, y, w, h) of a layer's mask content.
+
+        Returns ``None`` if the mask is empty.
+        """
+        self._require_layers("get_layer_bbox")
+        if not 0 <= index < len(self._layers):
+            return None
+        mask = self._layers[index]["mask"]
+        rows = np.any(mask > 0, axis=1)
+        cols = np.any(mask > 0, axis=0)
+        if not np.any(rows):
+            return None
+        y_min, y_max = np.where(rows)[0][[0, -1]]
+        x_min, x_max = np.where(cols)[0][[0, -1]]
+        return (int(x_min), int(y_min), int(x_max - x_min + 1), int(y_max - y_min + 1))
+
     # -- layer rename -----------------------------------------------------
 
     def rename_layer(self, index: int, name: str) -> None:
@@ -596,6 +671,65 @@ class Session:
         self._traced = False
         return 0
 
+    # -- object border tool -----------------------------------------------
+
+    def add_object_border(
+        self,
+        indices: list[int],
+        width: int = 3,
+        color: str = "#000000",
+    ) -> int:
+        """Add a border/outline around one or more layers combined.
+
+        Merges the masks of all specified layers, dilates the combined
+        mask, then subtracts the original combined mask to get the border
+        pixels.  The border layer is inserted after the last source layer.
+
+        Returns the index of the newly created border layer.
+        """
+        self._require_layers("add_object_border")
+        for idx in indices:
+            if not 0 <= idx < len(self._layers):
+                raise IndexError(f"Layer index {idx} out of range.")
+
+        self._save_undo("Add object border")
+
+        # Combine masks from all selected layers
+        h, w_px = self._layers[0]["mask"].shape
+        combined = np.zeros((h, w_px), dtype=np.uint8)
+        for idx in indices:
+            combined = np.maximum(combined, self._layers[idx]["mask"])
+
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (width * 2 + 1, width * 2 + 1)
+        )
+        dilated = cv2.dilate(combined, kernel, iterations=1)
+        border_mask = dilated - combined
+
+        r, g, b = hex_to_rgb(color)
+        layer_names = []
+        for idx in indices:
+            layer_names.append(
+                self._layers[idx].get("name", f"Layer {idx + 1}")
+            )
+        name_desc = ", ".join(layer_names) if len(layer_names) <= 3 else f"{len(layer_names)} layers"
+
+        new_layer = {
+            "rgb": (r, g, b),
+            "hex_color": rgb_to_hex(r, g, b),
+            "color_name": nearest_color_name(r, g, b),
+            "mask": border_mask,
+            "cluster_idx": -1,
+            "visible": True,
+            "name": f"Border ({name_desc})",
+        }
+
+        insert_at = max(indices) + 1
+        self._layers.insert(insert_at, new_layer)
+        self._resolve_overlaps()
+        self._traced = False
+        return insert_at
+
     # -- text tool --------------------------------------------------------
 
     def add_text(
@@ -653,6 +787,57 @@ class Session:
         self._resolve_overlaps()
         self._traced = False
         return len(self._layers) - 1
+
+    def edit_text_layer(
+        self,
+        index: int,
+        text: str,
+        *,
+        color: str | None = None,
+        font_scale: float = 2.0,
+        thickness: int = 3,
+    ) -> None:
+        """Re-render text for an existing text layer (in place).
+
+        Preserves the layer's position by centering the new text at the
+        same bounding-box centre as the old mask content.
+        """
+        self._require_layers("edit_text_layer")
+        if not 0 <= index < len(self._layers):
+            raise IndexError(f"Layer index {index} out of range.")
+
+        self._save_undo("Edit text")
+        layer = self._layers[index]
+        h, w = self._image.shape[:2]
+
+        # Find current centre of the old text mask
+        bbox = self.get_layer_bbox(index)
+        if bbox:
+            cx = bbox[0] + bbox[2] // 2
+            cy = bbox[1] + bbox[3] // 2
+        else:
+            cx, cy = w // 2, h // 2
+
+        # Render new text
+        mask = np.zeros((h, w), dtype=np.uint8)
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+        x = max(0, cx - tw // 2)
+        y = max(th, cy + th // 2)
+
+        cv2.putText(mask, text, (x, y), font, font_scale, 255, thickness, cv2.LINE_AA)
+        layer["mask"] = mask
+        layer["name"] = f'Text: "{text}"'
+
+        if color is not None:
+            r, g, b = hex_to_rgb(color)
+            layer["rgb"] = (r, g, b)
+            layer["hex_color"] = rgb_to_hex(r, g, b)
+            layer["color_name"] = nearest_color_name(r, g, b)
+
+        self._resolve_overlaps()
+        self._traced = False
 
     # -- overlap resolution -----------------------------------------------
 
