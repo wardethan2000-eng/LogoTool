@@ -202,23 +202,47 @@ def clone_parts(
         # 5a. Store the SVG file in the ZIP entries
         entries[svg_3mf_entry] = svg_path.read_bytes()
 
-        # 5b. Clone the mesh object in <resources>
-        if ref_mesh_obj is not None:
-            new_obj = _clone_element(ref_mesh_obj)
-            new_obj.set("id", str(new_obj_id))
-            resources.append(new_obj)
-        else:
-            # Fallback: create a minimal placeholder mesh object
-            new_obj = ET.SubElement(resources, f"{tp}object", attrib={
-                "id": str(new_obj_id), "type": "model",
+        # 5b. Create a new mesh object from THIS SVG's geometry.
+        #     Each layer must have its own unique mesh — not a clone of
+        #     the reference.  We use the SVG→mesh pipeline from
+        #     threemf_writer to parse the SVG path data and extrude it.
+        from .threemf_writer import _parse_svg_paths, _extrude_polygon
+
+        # Read scale and depth from the reference BambuStudioShape so the
+        # new meshes match the coordinate system Bambu Studio expects.
+        ref_scale = float(
+            ref_shape_elem.get("scale", "1e-5") if ref_shape_elem is not None else "1e-5"
+        )
+        ref_depth = float(
+            ref_shape_elem.get("depth", "10") if ref_shape_elem is not None else "10"
+        )
+
+        polygons = _parse_svg_paths(d_strings)
+
+        vertices: list[tuple[float, float, float]] = []
+        triangles: list[tuple[int, int, int]] = []
+        for poly in polygons:
+            if len(poly) < 3:
+                continue
+            # Scale factor: convert SVG pixels → mm using the same scale
+            # Bambu Studio uses.  ref_scale is typically ~1e-5.
+            _extrude_polygon(poly, ref_depth, ref_scale, vertices, triangles)
+
+        new_obj = ET.SubElement(resources, f"{tp}object", attrib={
+            "id": str(new_obj_id), "type": "model",
+        })
+        mesh_elem = ET.SubElement(new_obj, f"{tp}mesh")
+        verts_elem = ET.SubElement(mesh_elem, f"{tp}vertices")
+        for x, y, z in vertices:
+            ET.SubElement(verts_elem, f"{tp}vertex", attrib={
+                "x": f"{x:.6f}", "y": f"{y:.6f}", "z": f"{z:.6f}",
             })
-            mesh = ET.SubElement(new_obj, f"{tp}mesh")
-            verts = ET.SubElement(mesh, f"{tp}vertices")
-            ET.SubElement(verts, f"{tp}vertex", attrib={"x": "0", "y": "0", "z": "0"})
-            ET.SubElement(verts, f"{tp}vertex", attrib={"x": "1", "y": "0", "z": "0"})
-            ET.SubElement(verts, f"{tp}vertex", attrib={"x": "0", "y": "1", "z": "0"})
-            tris = ET.SubElement(mesh, f"{tp}triangles")
-            ET.SubElement(tris, f"{tp}triangle", attrib={"v1": "0", "v2": "1", "v3": "2"})
+        tris_elem = ET.SubElement(mesh_elem, f"{tp}triangles")
+        for v1, v2, v3 in triangles:
+            ET.SubElement(tris_elem, f"{tp}triangle", attrib={
+                "v1": str(v1), "v2": str(v2), "v3": str(v3),
+            })
+        face_count = len(triangles)
 
         # 5c. Add a <component> to the parent object
         ET.SubElement(components, f"{tp}component", attrib={
@@ -251,7 +275,7 @@ def clone_parts(
 
         # Add mesh_stat placeholder
         ET.SubElement(part_elem, "mesh_stat", attrib={
-            "face_count": "0",
+            "face_count": str(face_count),
             "edges_fixed": "0",
             "degenerate_facets": "0",
             "facets_removed": "0",
