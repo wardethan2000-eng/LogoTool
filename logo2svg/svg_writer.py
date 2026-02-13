@@ -8,7 +8,6 @@ import cv2
 import numpy as np
 import svgwrite
 
-
 def write_svg_files(
     base_name: str,
     layers: list[dict],
@@ -56,13 +55,11 @@ def write_svg_files(
 
     return output_files
 
-
 def _fmt(val: float) -> str:
     """Format a dimension value: integer string if whole, else 2 decimals."""
     if val == int(val):
         return str(int(val))
     return f"{val:.2f}"
-
 
 def _scale_path(d: str, scale: float) -> str:
     """Scale all numeric coordinates in an SVG path 'd' string."""
@@ -73,8 +70,8 @@ def _scale_path(d: str, scale: float) -> str:
     def _repl(m: re.Match) -> str:
         return f"{float(m.group()) * scale:.2f}"
 
-    return re.sub(r"-?\d+(?:\.\d+)?", _repl, d)
-
+    return re.sub(r"-?
+\d+(?:\.\d+)?", _repl, d)
 
 def _write_single_color_svg(
     path: Path,
@@ -105,7 +102,6 @@ def _write_single_color_svg(
 
     dwg.save(pretty=True)
 
-
 def _write_combined_svg(
     path: Path,
     layers: list[dict],
@@ -113,7 +109,17 @@ def _write_combined_svg(
     height: int,
     scale: float = 1.0,
 ) -> None:
-    """Write a combined SVG with one <g> group per color."""
+    """Write a combined SVG with each path as a separate top-level element.
+
+    Slicers (Bambu Studio, PrusaSlicer, etc.) treat each top-level SVG
+    element as one selectable/colorable object.  Previously all paths for
+    a color were wrapped in a single <g> group, which caused the slicer
+    to merge them into one monolithic object per color.
+
+    Now each <path> is emitted directly on the SVG root with a unique id
+    (e.g. ``color_FF0000_1``, ``color_FF0000_2``).  The color is carried
+    by each path's ``fill`` attribute, so no grouping is needed.
+    """
     sw = width * scale
     sh = height * scale
     dwg = svgwrite.Drawing(
@@ -123,18 +129,22 @@ def _write_combined_svg(
     )
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
 
+    path_counter = 0
     for i, layer in enumerate(layers, start=1):
         hex_clean = layer["hex_color"].lstrip("#")
-        group = dwg.g(id=f"color_{hex_clean}")
-        for d in layer["svg_paths"]:
-            group.add(
-                dwg.path(d=_scale_path(d, scale), fill=layer["hex_color"], fill_rule="evenodd", stroke="none")
+        for j, d in enumerate(layer["svg_paths"], start=1):
+            path_counter += 1
+            dwg.add(
+                dwg.path(
+                    d=_scale_path(d, scale),
+                    fill=layer["hex_color"],
+                    fill_rule="evenodd",
+                    stroke="none",
+                    id=f"color_{hex_clean}_{j}",
+                )
             )
 
-        dwg.add(group)
-
     dwg.save(pretty=True)
-
 
 def write_preview(
     base_name: str,
