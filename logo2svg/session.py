@@ -24,6 +24,7 @@ from .preprocessor import PreprocessReport, preprocess_image
 from .quantizer import quantize_colors
 from .svg_importer import import_svg_as_layers
 from .svg_writer import write_preview, write_svg_files
+from .threemf_writer import write_3mf
 from .tm_remover import remove_tm_symbols
 from .tracer import trace_mask_to_svg_paths
 
@@ -947,8 +948,15 @@ class Session:
         output_dir: str | Path,
         combined: bool = False,
         preview: bool = False,
+        threemf: bool = False,
     ) -> list[Path]:
-        """Write SVG files for all layers.  Calls :meth:`trace` if needed."""
+        """Write SVG files for all layers.  Calls :meth:`trace` if needed.
+
+        When *threemf* is True, also writes a ``.3mf`` file with one 3D
+        object per colour, each assigned to a different extruder slot.
+        This is the recommended format for Bambu Studio multi-colour
+        printing.
+        """
         if self._image is None:
             raise RuntimeError("No image loaded.")
         self._require_layers("export")
@@ -972,6 +980,18 @@ class Session:
             combined,
             scale=effective_scale,
         )
+
+        if threemf:
+            sub_dir = out / base_name
+            sub_dir.mkdir(parents=True, exist_ok=True)
+            threemf_path = write_3mf(
+                sub_dir / f"{base_name}.3mf",
+                self._layers,
+                width,
+                height,
+                scale=effective_scale,
+            )
+            output_files.append(threemf_path)
 
         if preview:
             preview_path = write_preview(

@@ -100,6 +100,11 @@ from .pipeline import PipelineConfig, process_batch, process_single
     help="Apply noise reduction before quantization.",
 )
 @click.option(
+    "--threemf", is_flag=True, default=False,
+    help="Export a 3MF file for Bambu Studio multi-colour printing. "
+         "Each colour becomes a separate 3D object with its own extruder.",
+)
+@click.option(
     "--import-svg", type=click.Path(exists=True), default=None,
     help="Import an SVG file as additional color layers after quantization.",
 )
@@ -147,6 +152,7 @@ def main(
     add_border: int | None,
     border_color: str,
     text_color: str,
+    threemf: bool,
 ) -> None:
     """Convert a logo image into color-separated SVG files for 3D printing.
 
@@ -236,6 +242,7 @@ def main(
         width=width,
         report=report,
         remove_tm=not keep_tm,
+        threemf=threemf,
     )
 
     try:
@@ -315,6 +322,7 @@ def main(
                         config.output_dir,
                         combined=config.combined,
                         preview=config.preview,
+                        threemf=config.threemf,
                     )
                     if config.verbosity >= 1:
                         click.echo(f"  {len(output_files)} file(s) created.")

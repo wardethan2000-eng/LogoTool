@@ -132,6 +132,11 @@ class MainWindow(QMainWindow):
         export_act.triggered.connect(self._on_export)
         file_menu.addAction(export_act)
 
+        export_3mf_act = QAction("Export &3MF\u2026", self)
+        export_3mf_act.setShortcut("Ctrl+Shift+E")
+        export_3mf_act.triggered.connect(self._on_export_3mf)
+        file_menu.addAction(export_3mf_act)
+
         export_png_act = QAction("Export &PNG\u2026", self)
         export_png_act.triggered.connect(self._on_export_png)
         file_menu.addAction(export_png_act)
@@ -292,6 +297,16 @@ class MainWindow(QMainWindow):
         export_btn.setFixedHeight(32)
         export_btn.clicked.connect(self._on_export)
         hbar.addWidget(export_btn)
+
+        # Export 3MF button
+        export_3mf_btn = QPushButton("Export 3MF")
+        export_3mf_btn.setToolTip(
+            "Export a 3MF file for Bambu Studio — each color becomes a\n"
+            "separate object with its filament pre-assigned  (Ctrl+Shift+E)"
+        )
+        export_3mf_btn.setFixedHeight(32)
+        export_3mf_btn.clicked.connect(self._on_export_3mf)
+        hbar.addWidget(export_3mf_btn)
 
         hbar.addSpacing(12)
         hbar.addWidget(self._vsep())
@@ -590,6 +605,27 @@ class MainWindow(QMainWindow):
             return
         self._set_busy(True, "Exporting\u2026")
         worker = ExportWorker(self._session, out_dir, combined=True)
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_export_done)
+        worker.error.connect(self._on_worker_error)
+        self._start_worker(worker)
+
+    def _on_export_3mf(self) -> None:
+        """Export a 3MF file for Bambu Studio multi-colour printing."""
+        if not self._session.is_quantized:
+            QMessageBox.information(
+                self, "Export 3MF", "Open and quantize an image first."
+            )
+            return
+        out_dir = QFileDialog.getExistingDirectory(
+            self, "Export 3MF — Choose Directory"
+        )
+        if not out_dir:
+            return
+        self._set_busy(True, "Exporting 3MF\u2026")
+        worker = ExportWorker(
+            self._session, out_dir, combined=True, threemf=True
+        )
         worker.progress.connect(self._on_progress)
         worker.finished.connect(self._on_export_done)
         worker.error.connect(self._on_worker_error)

@@ -37,6 +37,8 @@ class PipelineConfig:
     report: bool = False
     # Automatically remove small TM / ® symbols from logo margins
     remove_tm: bool = True
+    # Export a 3MF file for Bambu Studio multi-colour printing
+    threemf: bool = False
 
 
 def _log(msg: str, config: PipelineConfig, level: int = 1) -> None:
@@ -150,6 +152,7 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
         config.output_dir,
         combined=config.combined,
         preview=config.preview,
+        threemf=config.threemf,
     )
 
     # Print summary

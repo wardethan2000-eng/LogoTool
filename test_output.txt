@@ -1,0 +1,261 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: C:\Users\ethan\.gemini\antigravity\scratch\LogoTool
+configfile: pyproject.toml
+collected 20 items
+
+tests\test_svg_writer.py ........FFFFF.......                            [100%]
+
+================================== FAILURES ===================================
+__________________ TestCombinedSvg.test_combined_has_groups ___________________
+
+self = <tests.test_svg_writer.TestCombinedSvg object at 0x000001D5411EC190>
+tmp_path = WindowsPath('C:/Users/ethan/AppData/Local/Temp/pytest-of-ethan/pytest-39/test_combined_has_groups0')
+
+    def test_combined_has_groups(self, tmp_path):
+        layers = _make_layers()
+>       files = write_svg_files("test", layers, (100, 100), tmp_path, combined=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_svg_writer.py:140: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+logo2svg\svg_writer.py:54: in write_svg_files
+    _write_combined_svg(combined_path, layers, width, height, scale=scale)
+logo2svg\svg_writer.py:142: in _write_combined_svg
+    dwg.save(pretty=True)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:121: in save
+    self.write(fileobj, pretty=pretty, indent=indent)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:109: in write
+    xml_string = self.tostring()
+                 ^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:187: in tostring
+    xml = self.get_xml()
+          ^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:73: in get_xml
+    return super(Drawing, self).get_xml()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:209: in get_xml
+    self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:52: in check_all_svg_attribute_values
+    self.check_svg_attribute_value(elementname, attributename, value)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:61: in check_svg_attribute_value
+    self._check_valid_svg_attribute_name(elementname, attributename)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <svgwrite.validator2.Full11Validator object at 0x000001D5411C1160>
+elementname = 'svg', attributename = 'xmlns:inkscape'
+
+    def _check_valid_svg_attribute_name(self, elementname, attributename):
+        """ Check if 'attributename' is a valid svg-attribute for svg-element
+        'elementname'.
+    
+        Raises ValueError.
+        """
+        if not self.is_valid_svg_attribute(elementname, attributename):
+>           raise ValueError("Invalid attribute '%s' for svg-element <%s>." % (attributename, elementname))
+E           ValueError: Invalid attribute 'xmlns:inkscape' for svg-element <svg>.
+
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:88: ValueError
+____________________ TestCombinedSvg.test_combined_viewbox ____________________
+
+self = <tests.test_svg_writer.TestCombinedSvg object at 0x000001D5411EC2D0>
+tmp_path = WindowsPath('C:/Users/ethan/AppData/Local/Temp/pytest-of-ethan/pytest-39/test_combined_viewbox0')
+
+    def test_combined_viewbox(self, tmp_path):
+        layers = _make_layers(200, 300)
+>       files = write_svg_files("test", layers, (200, 300), tmp_path, combined=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_svg_writer.py:152: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+logo2svg\svg_writer.py:54: in write_svg_files
+    _write_combined_svg(combined_path, layers, width, height, scale=scale)
+logo2svg\svg_writer.py:142: in _write_combined_svg
+    dwg.save(pretty=True)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:121: in save
+    self.write(fileobj, pretty=pretty, indent=indent)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:109: in write
+    xml_string = self.tostring()
+                 ^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:187: in tostring
+    xml = self.get_xml()
+          ^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:73: in get_xml
+    return super(Drawing, self).get_xml()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:209: in get_xml
+    self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:52: in check_all_svg_attribute_values
+    self.check_svg_attribute_value(elementname, attributename, value)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:61: in check_svg_attribute_value
+    self._check_valid_svg_attribute_name(elementname, attributename)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <svgwrite.validator2.Full11Validator object at 0x000001D5411C1160>
+elementname = 'svg', attributename = 'xmlns:inkscape'
+
+    def _check_valid_svg_attribute_name(self, elementname, attributename):
+        """ Check if 'attributename' is a valid svg-attribute for svg-element
+        'elementname'.
+    
+        Raises ValueError.
+        """
+        if not self.is_valid_svg_attribute(elementname, attributename):
+>           raise ValueError("Invalid attribute '%s' for svg-element <%s>." % (attributename, elementname))
+E           ValueError: Invalid attribute 'xmlns:inkscape' for svg-element <svg>.
+
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:88: ValueError
+_____________ TestCombinedSvg.test_combined_group_ids_contain_hex _____________
+
+self = <tests.test_svg_writer.TestCombinedSvg object at 0x000001D5412042B0>
+tmp_path = WindowsPath('C:/Users/ethan/AppData/Local/Temp/pytest-of-ethan/pytest-39/test_combined_group_ids_contai0')
+
+    def test_combined_group_ids_contain_hex(self, tmp_path):
+        layers = _make_layers()
+>       files = write_svg_files("test", layers, (100, 100), tmp_path, combined=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_svg_writer.py:159: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+logo2svg\svg_writer.py:54: in write_svg_files
+    _write_combined_svg(combined_path, layers, width, height, scale=scale)
+logo2svg\svg_writer.py:142: in _write_combined_svg
+    dwg.save(pretty=True)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:121: in save
+    self.write(fileobj, pretty=pretty, indent=indent)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:109: in write
+    xml_string = self.tostring()
+                 ^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:187: in tostring
+    xml = self.get_xml()
+          ^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:73: in get_xml
+    return super(Drawing, self).get_xml()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:209: in get_xml
+    self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:52: in check_all_svg_attribute_values
+    self.check_svg_attribute_value(elementname, attributename, value)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:61: in check_svg_attribute_value
+    self._check_valid_svg_attribute_name(elementname, attributename)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <svgwrite.validator2.Full11Validator object at 0x000001D5411C1160>
+elementname = 'svg', attributename = 'xmlns:inkscape'
+
+    def _check_valid_svg_attribute_name(self, elementname, attributename):
+        """ Check if 'attributename' is a valid svg-attribute for svg-element
+        'elementname'.
+    
+        Raises ValueError.
+        """
+        if not self.is_valid_svg_attribute(elementname, attributename):
+>           raise ValueError("Invalid attribute '%s' for svg-element <%s>." % (attributename, elementname))
+E           ValueError: Invalid attribute 'xmlns:inkscape' for svg-element <svg>.
+
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:88: ValueError
+___________ TestCombinedSvg.test_combined_paths_have_correct_fills ____________
+
+self = <tests.test_svg_writer.TestCombinedSvg object at 0x000001D5412043E0>
+tmp_path = WindowsPath('C:/Users/ethan/AppData/Local/Temp/pytest-of-ethan/pytest-39/test_combined_paths_have_corre0')
+
+    def test_combined_paths_have_correct_fills(self, tmp_path):
+        layers = _make_layers()
+>       files = write_svg_files("test", layers, (100, 100), tmp_path, combined=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_svg_writer.py:167: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+logo2svg\svg_writer.py:54: in write_svg_files
+    _write_combined_svg(combined_path, layers, width, height, scale=scale)
+logo2svg\svg_writer.py:142: in _write_combined_svg
+    dwg.save(pretty=True)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:121: in save
+    self.write(fileobj, pretty=pretty, indent=indent)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:109: in write
+    xml_string = self.tostring()
+                 ^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:187: in tostring
+    xml = self.get_xml()
+          ^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:73: in get_xml
+    return super(Drawing, self).get_xml()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:209: in get_xml
+    self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:52: in check_all_svg_attribute_values
+    self.check_svg_attribute_value(elementname, attributename, value)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:61: in check_svg_attribute_value
+    self._check_valid_svg_attribute_name(elementname, attributename)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <svgwrite.validator2.Full11Validator object at 0x000001D5411C1160>
+elementname = 'svg', attributename = 'xmlns:inkscape'
+
+    def _check_valid_svg_attribute_name(self, elementname, attributename):
+        """ Check if 'attributename' is a valid svg-attribute for svg-element
+        'elementname'.
+    
+        Raises ValueError.
+        """
+        if not self.is_valid_svg_attribute(elementname, attributename):
+>           raise ValueError("Invalid attribute '%s' for svg-element <%s>." % (attributename, elementname))
+E           ValueError: Invalid attribute 'xmlns:inkscape' for svg-element <svg>.
+
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:88: ValueError
+____________ TestCombinedSvg.test_combined_has_inkscape_attributes ____________
+
+self = <tests.test_svg_writer.TestCombinedSvg object at 0x000001D5411E4950>
+tmp_path = WindowsPath('C:/Users/ethan/AppData/Local/Temp/pytest-of-ethan/pytest-39/test_combined_has_inkscape_att0')
+
+    def test_combined_has_inkscape_attributes(self, tmp_path):
+        layers = _make_layers()
+>       files = write_svg_files("test", layers, (100, 100), tmp_path, combined=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_svg_writer.py:175: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+logo2svg\svg_writer.py:54: in write_svg_files
+    _write_combined_svg(combined_path, layers, width, height, scale=scale)
+logo2svg\svg_writer.py:142: in _write_combined_svg
+    dwg.save(pretty=True)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:121: in save
+    self.write(fileobj, pretty=pretty, indent=indent)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:109: in write
+    xml_string = self.tostring()
+                 ^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:187: in tostring
+    xml = self.get_xml()
+          ^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\drawing.py:73: in get_xml
+    return super(Drawing, self).get_xml()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\base.py:209: in get_xml
+    self.validator.check_all_svg_attribute_values(self.elementname, self.attribs)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:52: in check_all_svg_attribute_values
+    self.check_svg_attribute_value(elementname, attributename, value)
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:61: in check_svg_attribute_value
+    self._check_valid_svg_attribute_name(elementname, attributename)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <svgwrite.validator2.Full11Validator object at 0x000001D5411C1160>
+elementname = 'svg', attributename = 'xmlns:inkscape'
+
+    def _check_valid_svg_attribute_name(self, elementname, attributename):
+        """ Check if 'attributename' is a valid svg-attribute for svg-element
+        'elementname'.
+    
+        Raises ValueError.
+        """
+        if not self.is_valid_svg_attribute(elementname, attributename):
+>           raise ValueError("Invalid attribute '%s' for svg-element <%s>." % (attributename, elementname))
+E           ValueError: Invalid attribute 'xmlns:inkscape' for svg-element <svg>.
+
+..\..\..\..\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\svgwrite\validator2.py:88: ValueError
+=========================== short test summary info ===========================
+FAILED tests/test_svg_writer.py::TestCombinedSvg::test_combined_has_groups - ...
+FAILED tests/test_svg_writer.py::TestCombinedSvg::test_combined_viewbox - Val...
+FAILED tests/test_svg_writer.py::TestCombinedSvg::test_combined_group_ids_contain_hex
+FAILED tests/test_svg_writer.py::TestCombinedSvg::test_combined_paths_have_correct_fills
+FAILED tests/test_svg_writer.py::TestCombinedSvg::test_combined_has_inkscape_attributes
+======================== 5 failed, 15 passed in 2.08s =========================

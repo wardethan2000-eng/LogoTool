@@ -131,22 +131,29 @@ class TraceWorker(_BaseWorker):
 
 
 class ExportWorker(_BaseWorker):
-    """Write SVG files."""
+    """Write SVG files (and optionally a 3MF archive)."""
 
     def __init__(
         self,
         session: Session,
         output_dir: str,
         combined: bool = False,
+        threemf: bool = False,
         parent=None,
     ):
         super().__init__(session, parent)
         self._output_dir = output_dir
         self._combined = combined
+        self._threemf = threemf
 
     def _run(self) -> list[Path]:
-        self.progress.emit("Exporting SVGs\u2026")
-        return self._session.export(self._output_dir, combined=self._combined)
+        label = "Exporting 3MF\u2026" if self._threemf else "Exporting SVGs\u2026"
+        self.progress.emit(label)
+        return self._session.export(
+            self._output_dir,
+            combined=self._combined,
+            threemf=self._threemf,
+        )
 
 
 class ImportSvgWorker(_BaseWorker):
