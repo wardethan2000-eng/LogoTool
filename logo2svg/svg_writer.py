@@ -23,7 +23,7 @@ def write_svg_files(
     ``layer_2.svg``, etc.  The combined file is ``combined.svg``.
 
     Args:
-        base_name: Base filename (without extension) — used as subfolder name.
+        base_name: Base filename (without extension) -- used as subfolder name.
         layers: List of layer dicts with 'hex_color', 'color_name', 'svg_paths'.
         image_size: (height, width) of the source image.
         output_dir: Parent directory; a subfolder *base_name* is created inside.
@@ -61,6 +61,8 @@ def _fmt(val: float) -> str:
         return str(int(val))
     return f"{val:.2f}"
 
+_SCALE_RE_PATTERN = r"-?\d+(?:\.\d+)?"
+
 def _scale_path(d: str, scale: float) -> str:
     """Scale all numeric coordinates in an SVG path 'd' string."""
     if scale == 1.0:
@@ -70,8 +72,7 @@ def _scale_path(d: str, scale: float) -> str:
     def _repl(m: re.Match) -> str:
         return f"{float(m.group()) * scale:.2f}"
 
-    return re.sub(r"-?
-\d+(?:\.\d+)?", _repl, d)
+    return re.sub(_SCALE_RE_PATTERN, _repl, d)
 
 def _write_single_color_svg(
     path: Path,
@@ -129,11 +130,9 @@ def _write_combined_svg(
     )
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
 
-    path_counter = 0
     for i, layer in enumerate(layers, start=1):
         hex_clean = layer["hex_color"].lstrip("#")
         for j, d in enumerate(layer["svg_paths"], start=1):
-            path_counter += 1
             dwg.add(
                 dwg.path(
                     d=_scale_path(d, scale),
