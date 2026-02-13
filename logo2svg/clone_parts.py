@@ -37,6 +37,11 @@ from .threemf_writer import (
 
 _NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 
+# Register the 3MF namespace as the default (no prefix).  Without this,
+# ElementTree rewrites all tags as ``ns0:model``, ``ns0:object``, etc.
+# during round-trip serialisation — which Bambu Studio doesn't recognise.
+ET.register_namespace("", _NS)
+
 
 def clone_parts(
     project_3mf: str | Path,
