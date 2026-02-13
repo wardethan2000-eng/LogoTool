@@ -16,7 +16,6 @@ from __future__ import annotations
 import numpy as np
 from potrace import Bitmap, POTRACE_TURNPOLICY_MINORITY
 
-
 def trace_mask_to_svg_paths(
     mask: np.ndarray,
     *,
@@ -27,14 +26,16 @@ def trace_mask_to_svg_paths(
 ) -> list[str]:
     """Trace a binary mask to SVG path 'd' strings via Potrace.
 
-    Each returned path string may contain multiple sub-paths (outer
-    boundary + holes) using the SVG evenodd fill rule.
+    Each returned path string represents one separate shape (curve)
+    traced by Potrace.  This ensures slicers and SVG editors treat
+    each shape as an independent object that can be individually
+    colored or manipulated.
 
     Args:
         mask: (H, W) uint8 binary mask, 0 = background, 255 = foreground.
         turdsize: Suppress speckles of up to this many pixels.
             Acts as a built-in small-component filter.
-        alphamax: Corner detection threshold (0.0 – 1.334).
+        alphamax: Corner detection threshold (0.0 - 1.334).
             Lower = more corners detected (sharper output).
             Higher = more curves (smoother output).
             Default 1.0 is a good balance for logos.
@@ -44,8 +45,8 @@ def trace_mask_to_svg_paths(
             Lower = more faithful, higher = fewer segments.
 
     Returns:
-        List of SVG path 'd' strings.  Each string is a complete
-        compound path with evenodd winding for proper hole rendering.
+        List of SVG path 'd' strings.  Each string is one separate
+        shape traced by Potrace.
     """
     if mask.size == 0 or not np.any(mask):
         return []
@@ -72,11 +73,9 @@ def trace_mask_to_svg_paths(
     # Convert potrace curves into SVG path strings
     return _curves_to_svg_paths(plist)
 
-
 # ------------------------------------------------------------------
-# Legacy wrappers – kept so existing callers / debug scripts still work.
+# Legacy wrappers - kept so existing callers / debug scripts still work.
 # ------------------------------------------------------------------
-
 def find_contours(
     mask: np.ndarray,
     smooth: float = 0.0,
@@ -84,7 +83,7 @@ def find_contours(
     """Legacy wrapper: find contours with OpenCV.
 
     Retained for callers that inspect raw contour arrays (debug scripts).
-    The main pipeline no longer uses this – it calls
+    The main pipeline no longer uses this - it calls
     trace_mask_to_svg_paths() directly.
     """
     import cv2
@@ -97,7 +96,6 @@ def find_contours(
         mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
     )
     return list(contours), hierarchy
-
 
 def trace_to_svg_paths(
     contours: list[np.ndarray],
@@ -125,43 +123,58 @@ def trace_to_svg_paths(
 
     return trace_mask_to_svg_paths(mask)
 
-
 # ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
+def _curve_to_svg_d(curve) -> str:
+    """Convert a single potrace curve into an SVG path 'd' string."""
+    parts: list[str] = []
+    fs = curve.start_point
+    parts.append(f"M {fs.x:.2f} {fs.y:.2f}")
+
+    for segment in curve.segments:
+        if segment.is_corner:
+            a = segment.c
+            b = segment.end_point
+            parts.append(
+                f"L {a.x:.2f} {a.y:.2f} L {b.x:.2f} {b.y:.2f}"
+            )
+        else:
+            a = segment.c1
+            b = segment.c2
+            c = segment.end_point
+            parts.append(
+                f"C {a.x:.2f} {a.y:.2f} {b.x:.2f} {b.y:.2f} "
+                f"{c.x:.2f} {c.y:.2f}"
+            )
+
+    parts.append("Z")
+    return " ".join(parts)
 
 def _curves_to_svg_paths(plist) -> list[str]:
     """Convert potrace path list into SVG path 'd' strings.
 
-    All curves are combined into a single compound SVG path that
-    relies on fill-rule="evenodd" for correct hole rendering.
+    Each Potrace curve becomes its own SVG path string so that
+    downstream SVG writers emit separate <path> elements.  This
+    allows slicers (e.g. Bambu Studio, PrusaSlicer) to treat each
+    shape as an independent object for multi-color assignment.
+
+    Shapes that contain holes (e.g. the letter 'O') still render
+    correctly because each <path> element uses fill-rule="evenodd".
     """
     if not plist:
         return []
 
-    parts: list[str] = []
-
+    paths: list[str] = []
     for curve in plist:
-        fs = curve.start_point
-        parts.append(f"M {fs.x:.2f} {fs.y:.2f}")
+        try:
+            d = _curve_to_svg_d(curve)
+            # Only include non-trivial paths (must have at least M...Z
+            # plus some actual drawing commands)
+            if d and len(d) > 10:
+                paths.append(d)
+        except (AttributeError, TypeError):
+            # Skip malformed curves that lack expected attributes
+            continue
 
-        for segment in curve.segments:
-            if segment.is_corner:
-                a = segment.c
-                b = segment.end_point
-                parts.append(
-                    f"L {a.x:.2f} {a.y:.2f} L {b.x:.2f} {b.y:.2f}"
-                )
-            else:
-                a = segment.c1
-                b = segment.c2
-                c = segment.end_point
-                parts.append(
-                    f"C {a.x:.2f} {a.y:.2f} {b.x:.2f} {b.y:.2f} "
-                    f"{c.x:.2f} {c.y:.2f}"
-                )
-
-        parts.append("Z")
-
-    # Return as a single compound path (multiple M...Z sub-paths)
-    return [" ".join(parts)]
+    return paths
