@@ -35,7 +35,7 @@ def trace_mask_to_svg_paths(
         mask: (H, W) uint8 binary mask, 0 = background, 255 = foreground.
         turdsize: Suppress speckles of up to this many pixels.
             Acts as a built-in small-component filter.
-        alphamax: Corner detection threshold (0.0 – 1.334).
+        alphamax: Corner detection threshold (0.0 - 1.334).
             Lower = more corners detected (sharper output).
             Higher = more curves (smoother output).
             Default 1.0 is a good balance for logos.
@@ -74,9 +74,8 @@ def trace_mask_to_svg_paths(
     return _curves_to_svg_paths(plist)
 
 # ------------------------------------------------------------------
-# Legacy wrappers – kept so existing callers / debug scripts still work.
+# Legacy wrappers - kept so existing callers / debug scripts still work.
 # ------------------------------------------------------------------
-
 def find_contours(
     mask: np.ndarray,
     smooth: float = 0.0,
@@ -84,7 +83,7 @@ def find_contours(
     """Legacy wrapper: find contours with OpenCV.
 
     Retained for callers that inspect raw contour arrays (debug scripts).
-    The main pipeline no longer uses this – it calls
+    The main pipeline no longer uses this - it calls
     trace_mask_to_svg_paths() directly.
     """
     import cv2
@@ -127,7 +126,6 @@ def trace_to_svg_paths(
 # ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
-
 def _curve_to_svg_d(curve) -> str:
     """Convert a single potrace curve into an SVG path 'd' string."""
     parts: list[str] = []
@@ -153,7 +151,6 @@ def _curve_to_svg_d(curve) -> str:
     parts.append("Z")
     return " ".join(parts)
 
-
 def _curves_to_svg_paths(plist) -> list[str]:
     """Convert potrace path list into SVG path 'd' strings.
 
@@ -168,4 +165,16 @@ def _curves_to_svg_paths(plist) -> list[str]:
     if not plist:
         return []
 
-    return [_curve_to_svg_d(curve) for curve in plist]
+    paths: list[str] = []
+    for curve in plist:
+        try:
+            d = _curve_to_svg_d(curve)
+            # Only include non-trivial paths (must have at least M...Z
+            # plus some actual drawing commands)
+            if d and len(d) > 10:
+                paths.append(d)
+        except (AttributeError, TypeError):
+            # Skip malformed curves that lack expected attributes
+            continue
+
+    return paths
