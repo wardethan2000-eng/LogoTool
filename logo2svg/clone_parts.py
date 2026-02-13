@@ -174,13 +174,11 @@ def clone_parts(
     # 4. Determine next available IDs
     # --------------------------------------------------
     max_obj_id = _max_object_id(model_root)
-    max_part_id = _max_part_id(settings_root, parent_id)
 
     # --------------------------------------------------
     # 5. For each SVG layer, clone the structure
     # --------------------------------------------------
     new_obj_id = max_obj_id + 1
-    new_part_id = max_part_id + 1
     next_extruder = _max_extruder(settings_root, parent_id) + 1
 
     # Find the parent object's settings entry
@@ -229,8 +227,10 @@ def clone_parts(
         })
 
         # 5d. Add a <part> to model_settings.config
+        # Part ID MUST match the object ID — Bambu Studio uses this to
+        # correlate components with their settings.
         part_elem = ET.SubElement(parent_settings_obj, "part", attrib={
-            "id": str(new_part_id),
+            "id": str(new_obj_id),
             "subtype": "normal_part",
         })
         ET.SubElement(part_elem, "metadata", attrib={
@@ -260,7 +260,6 @@ def clone_parts(
         })
 
         new_obj_id += 1
-        new_part_id += 1
         next_extruder += 1
 
     # Update the parent object's face_count metadata
