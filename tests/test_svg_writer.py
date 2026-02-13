@@ -170,6 +170,20 @@ class TestCombinedSvg:
         assert 'fill="#FF0000"' in content
         assert 'fill="#0000FF"' in content
 
+    def test_combined_has_inkscape_attributes(self, tmp_path):
+        layers = _make_layers()
+        files = write_svg_files("test", layers, (100, 100), tmp_path, combined=True)
+        combined = [f for f in files if "combined" in f.name][0]
+        content = combined.read_text()
+        
+        # Check namespace
+        assert 'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"' in content
+        
+        # Check group attributes
+        assert 'inkscape:groupmode="layer"' in content
+        assert 'inkscape:label="red (#FF0000)"' in content
+        assert 'inkscape:label="blue (#0000FF)"' in content
+
 
 # ---------------------------------------------------------------------------
 # Preview PNG

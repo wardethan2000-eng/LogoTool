@@ -13,6 +13,14 @@ if getattr(sys, "frozen", False):
     # Running inside a PyInstaller bundle
     base = sys._MEIPASS  # type: ignore[attr-defined]
 
+    # Redirect stdout/stderr to devnull so C-extension libraries
+    # (OpenCV, potrace, sklearn) don't cause Windows to briefly
+    # allocate a console window when they write debug output.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w")
+
     # Point Qt to the bundled plugins directory
     plugin_path = os.path.join(base, "PyQt6", "Qt6", "plugins")
     if os.path.isdir(plugin_path):

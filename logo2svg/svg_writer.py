@@ -120,12 +120,19 @@ def _write_combined_svg(
         str(path),
         size=(f"{_fmt(sw)}px", f"{_fmt(sh)}px"),
         viewBox=f"0 0 {_fmt(sw)} {_fmt(sh)}",
+        debug=False
     )
     dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
+    dwg.attribs["xmlns:inkscape"] = "http://www.inkscape.org/namespaces/inkscape"
 
     for i, layer in enumerate(layers, start=1):
         hex_clean = layer["hex_color"].lstrip("#")
-        group = dwg.g(id=f"color_{hex_clean}")
+        group = dwg.g(id=f"color_{hex_clean}", debug=False)
+        
+        # Add Inkscape layer attributes so slicers (Bambu/Prusa) recognize them as objects
+        group.attribs["inkscape:groupmode"] = "layer"
+        group.attribs["inkscape:label"] = f"{layer.get('color_name', 'Color')} ({layer['hex_color']})"
+
         for d in layer["svg_paths"]:
             group.add(
                 dwg.path(d=_scale_path(d, scale), fill=layer["hex_color"], fill_rule="evenodd", stroke="none")

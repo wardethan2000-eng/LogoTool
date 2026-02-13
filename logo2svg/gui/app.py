@@ -116,7 +116,7 @@ def run_gui(file_path: str | None = None) -> int:
                            | Qt.WindowType.FramelessWindowHint)
     # Centre the splash on the primary screen so it doesn't briefly
     # appear at (0, 0) before the window manager moves it.
-    screen_geo = app.primaryScreen().availableGeometry()
+    screen_geo = app.primaryScreen().geometry()
     splash_size = splash.size()
     splash.move(
         screen_geo.x() + (screen_geo.width() - splash_size.width()) // 2,
