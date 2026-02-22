@@ -4,12 +4,19 @@ REM  Build a standalone logo2svg GUI executable with PyInstaller
 REM ─────────────────────────────────────────────────────────
 echo === logo2svg GUI builder ===
 
-REM 1. Make sure PyInstaller is installed
-pip install pyinstaller >nul 2>&1
+set PYTHON_EXE=python
+if exist ".venv\Scripts\python.exe" set PYTHON_EXE=.venv\Scripts\python.exe
 
-REM 2. Run PyInstaller from the spec file
+REM 1. Make sure PyInstaller is installed
+%PYTHON_EXE% -m pip install pyinstaller >nul 2>&1
+
+REM 2. Remove stale build artifacts
+if exist build rmdir /s /q build
+if exist dist rmdir /s /q dist
+
+REM 3. Run PyInstaller from the spec file
 echo Building executable ...
-pyinstaller logo2svg_gui.spec --noconfirm
+%PYTHON_EXE% -m PyInstaller logo2svg_gui.spec --noconfirm --clean
 
 echo.
 echo Done!  The executable is in:

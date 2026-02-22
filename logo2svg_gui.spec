@@ -33,6 +33,12 @@ hidden_imports = (
         "PyQt6.QtWidgets",
         # GUI style module added recently
         "logo2svg.gui.style",
+        # Explicit GUI panels for robust frozen imports
+        "logo2svg.gui.preview_panel",
+        "logo2svg.gui.layer_panel",
+        "logo2svg.gui.main_window",
+        "logo2svg.gui.source_panel",
+        "logo2svg.gui.settings_dialog",
     ]
 )
 
