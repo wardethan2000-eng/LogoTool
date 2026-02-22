@@ -106,7 +106,7 @@ class PreviewPanel(QWidget):
         layout.addWidget(self._image_label, stretch=1)
 
         self._current_pixmap: QPixmap | None = None
-    self._image_size: tuple[int, int] | None = None  # (h, w)
+        self._image_size: tuple[int, int] | None = None  # (h, w)
         self._show_empty_state()
 
         # Processing overlay (child of this widget, covers entire panel)
