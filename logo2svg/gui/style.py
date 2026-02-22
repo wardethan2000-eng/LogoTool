@@ -529,6 +529,11 @@ QFrame[cssClass="layerCard"]:hover {{
     border-color: {BORDER};
 }}
 
+QFrame[cssClass="layerCard"][selected="true"] {{
+    background-color: {ACCENT_MUTED};
+    border-color: {ACCENT};
+}}
+
 /* ================================================================
    APP-SPECIFIC: header bar
    ================================================================ */

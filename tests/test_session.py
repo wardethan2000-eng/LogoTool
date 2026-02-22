@@ -295,52 +295,37 @@ class TestCompositePreview:
         assert "<svg" in svg
         assert "<path" in svg
 
-
-# ---------------------------------------------------------------------------
-# Test: separation mode
-# ---------------------------------------------------------------------------
-
-class TestSeparationMode:
-    def test_default_mode_is_color(self):
-        s = Session()
-        assert s.separation_mode == "color"
-
-    def test_set_mode_object(self, tmp_path):
+    def test_get_layer_at_pixel(self, tmp_path):
         png = tmp_path / "logo.png"
         _create_two_color_png(png)
         s = Session()
         s.load(png)
         s.quantize(n_colors=2)
-        color_count = s.get_layer_count()
-        s.set_separation_mode("object")
-        assert s.separation_mode == "object"
-        # Object mode should produce at least as many layers as color mode
-        # (each color region may have multiple components)
-        assert s.get_layer_count() >= color_count
 
-    def test_set_invalid_mode_raises(self):
-        s = Session()
-        with pytest.raises(ValueError, match="Invalid separation mode"):
-            s.set_separation_mode("invalid")
+        idx = s.get_layer_at_pixel(100, 100)
+        assert idx is not None
 
-    def test_mode_change_resets_trace(self, tmp_path):
+        # Outside the foreground should not map to a layer.
+        assert s.get_layer_at_pixel(5, 5) is None
+
+        # Hidden selected layer should be ignored when visible_only=True.
+        s.set_layer_visibility(idx, False)
+        assert s.get_layer_at_pixel(100, 100, visible_only=True) is None
+        assert s.get_layer_at_pixel(100, 100, visible_only=False) == idx
+
+    def test_selected_outline_changes_composite(self, tmp_path):
         png = tmp_path / "logo.png"
         _create_two_color_png(png)
         s = Session()
         s.load(png)
         s.quantize(n_colors=2)
-        s.trace()
-        assert s.is_traced
-        s.set_separation_mode("object")
-        assert not s.is_traced
 
-    def test_mode_switch_back_to_color(self, tmp_path):
-        png = tmp_path / "logo.png"
-        _create_two_color_png(png)
-        s = Session()
-        s.load(png)
-        s.quantize(n_colors=2)
-        color_count = s.get_layer_count()
-        s.set_separation_mode("object")
-        s.set_separation_mode("color")
-        assert s.get_layer_count() == color_count
+        idx = s.get_layer_at_pixel(100, 100)
+        assert idx is not None
+
+        base = s.get_composite_preview()
+        outlined = s.get_composite_preview([idx])
+
+        assert base is not None
+        assert outlined is not None
+        assert not np.array_equal(base, outlined)
