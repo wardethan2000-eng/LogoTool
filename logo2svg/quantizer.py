@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-from sklearn.cluster import KMeans, MiniBatchKMeans
-from sklearn.metrics import silhouette_score
 
 
 def quantize_colors(
@@ -52,17 +50,12 @@ def quantize_colors(
     n_unique = len(np.unique(fg_pixels_lab.reshape(-1, 3), axis=0))
     n_colors = max(1, min(n_colors, n_unique, max_k))
 
-    # Run K-means clustering
-    # Use MiniBatchKMeans for large images for speed
-    if n_fg > 100000:
-        kmeans = MiniBatchKMeans(
-            n_clusters=n_colors, n_init=10, random_state=42, batch_size=10000
-        )
-    else:
-        kmeans = KMeans(n_clusters=n_colors, n_init=10, random_state=42)
-
-    cluster_labels = kmeans.fit_predict(fg_pixels_lab)
-    centers_lab = kmeans.cluster_centers_
+    # Run K-means clustering in LAB space.
+    cluster_labels, centers_lab = _kmeans_lab(
+        fg_pixels_lab,
+        n_clusters=n_colors,
+        attempts=10,
+    )
 
     # Build full label image (-1 for background)
     labels = np.full((h, w), -1, dtype=np.int32)
@@ -98,32 +91,123 @@ def _auto_detect_k(
     else:
         sample = pixels_lab
 
+    if len(sample) < 2:
+        return 1
+
     best_k = 2
     best_score = -1.0
 
     for k in range(2, min(max_k + 1, len(sample))):
-        kmeans = MiniBatchKMeans(n_clusters=k, n_init=5, random_state=42, batch_size=5000)
-        cluster_labels = kmeans.fit_predict(sample)
+        cluster_labels, _ = _kmeans_lab(sample, n_clusters=k, attempts=5)
 
-        # Need at least 2 distinct labels for silhouette score
+        # Need at least 2 distinct labels for silhouette score.
         if len(np.unique(cluster_labels)) < 2:
             continue
 
-        # Subsample further for silhouette scoring if needed
-        sil_sample_size = min(10000, len(sample))
-        if len(sample) > sil_sample_size:
-            sil_idx = np.random.RandomState(42).choice(
-                len(sample), sil_sample_size, replace=False
-            )
-            score = silhouette_score(sample[sil_idx], cluster_labels[sil_idx])
-        else:
-            score = silhouette_score(sample, cluster_labels)
+        score = _silhouette_score_approx(
+            sample,
+            cluster_labels,
+            max_points=1200,
+        )
 
         if score > best_score:
             best_score = score
             best_k = k
 
     return best_k
+
+
+def _kmeans_lab(
+    pixels_lab: np.ndarray,
+    *,
+    n_clusters: int,
+    attempts: int = 10,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Cluster LAB pixels with OpenCV K-means.
+
+    Returns integer labels and LAB centers in float64.
+    """
+    data = np.asarray(pixels_lab, dtype=np.float32)
+    if len(data) == 0:
+        raise ValueError("Cannot cluster an empty pixel set.")
+
+    n_clusters = max(1, min(int(n_clusters), len(data)))
+    criteria = (
+        cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+        40,
+        0.2,
+    )
+
+    cv2.setRNGSeed(42)
+    _compactness, labels, centers = cv2.kmeans(
+        data,
+        n_clusters,
+        None,
+        criteria,
+        attempts,
+        cv2.KMEANS_PP_CENTERS,
+    )
+
+    labels = labels.reshape(-1).astype(np.int32)
+    centers = centers.astype(np.float64)
+    return labels, centers
+
+
+def _silhouette_score_approx(
+    points: np.ndarray,
+    labels: np.ndarray,
+    *,
+    max_points: int = 1200,
+) -> float:
+    """Approximate silhouette score using bounded random subsampling."""
+    if len(points) != len(labels):
+        raise ValueError("points and labels must have the same length")
+
+    unique = np.unique(labels)
+    if len(unique) < 2:
+        return -1.0
+
+    points = np.asarray(points, dtype=np.float64)
+    labels = np.asarray(labels, dtype=np.int32)
+
+    if len(points) > max_points:
+        rng = np.random.RandomState(42)
+        idx = rng.choice(len(points), max_points, replace=False)
+        points = points[idx]
+        labels = labels[idx]
+
+    # Pairwise Euclidean distances.
+    dmat = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)
+
+    silhouettes = np.zeros(len(points), dtype=np.float64)
+    for i in range(len(points)):
+        this_label = labels[i]
+
+        same = labels == this_label
+        same_count = int(np.count_nonzero(same))
+        if same_count <= 1:
+            silhouettes[i] = 0.0
+            continue
+
+        # Intra-cluster distance (exclude self).
+        a = (np.sum(dmat[i, same]) - 0.0) / (same_count - 1)
+
+        # Nearest other-cluster mean distance.
+        b = np.inf
+        for other in unique:
+            if other == this_label:
+                continue
+            mask = labels == other
+            if not np.any(mask):
+                continue
+            dist = float(np.mean(dmat[i, mask]))
+            if dist < b:
+                b = dist
+
+        denom = max(a, b)
+        silhouettes[i] = 0.0 if denom <= 1e-12 else (b - a) / denom
+
+    return float(np.mean(silhouettes))
 
 
 def _reassign_boundary_pixels(

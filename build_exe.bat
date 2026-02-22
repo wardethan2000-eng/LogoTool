@@ -20,9 +20,9 @@ echo Building executable ...
 
 echo.
 echo Done!  The executable is in:
-echo   dist\logo2svg\logo2svg.exe
+echo   dist\QuickLayer\QuickLayer.exe
 echo.
-echo You can distribute the entire dist\logo2svg\ folder,
+echo You can distribute the entire dist\QuickLayer\ folder,
 echo or use the --onefile flag in the spec for a single EXE
 echo (slower startup, but one file to ship).
 pause

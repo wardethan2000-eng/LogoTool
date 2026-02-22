@@ -1,46 +1,36 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for the logo2svg GUI executable."""
 
-import sys
-from pathlib import Path
 from PyInstaller.utils.hooks import (
-    collect_submodules,
     collect_data_files,
     collect_dynamic_libs,
 )
 
-# Collect all submodules that PyInstaller might miss
-hidden_imports = (
-    collect_submodules("logo2svg")
-    + collect_submodules("sklearn")
-    + collect_submodules("PyQt6")
-    + [
-        "PIL",
-        "PIL.Image",
-        "numpy",
-        "cv2",
-        "svgwrite",
-        "svgwrite.shapes",
-        "svgwrite.path",
-        "svgwrite.container",
-        "webcolors",
-        "potrace",
-        "click",
-        # Explicit PyQt6 modules that collect_submodules sometimes misses
-        "PyQt6.sip",
-        "PyQt6.QtCore",
-        "PyQt6.QtGui",
-        "PyQt6.QtWidgets",
-        # GUI style module added recently
-        "logo2svg.gui.style",
-        # Explicit GUI panels for robust frozen imports
-        "logo2svg.gui.preview_panel",
-        "logo2svg.gui.layer_panel",
-        "logo2svg.gui.main_window",
-        "logo2svg.gui.source_panel",
-        "logo2svg.gui.settings_dialog",
-    ]
-)
+# Keep hidden imports explicit and minimal for faster startup.
+hidden_imports = [
+    "PIL",
+    "PIL.Image",
+    "numpy",
+    "cv2",
+    "svgwrite",
+    "svgwrite.shapes",
+    "svgwrite.path",
+    "svgwrite.container",
+    "webcolors",
+    "potrace",
+    "click",
+    "PyQt6.sip",
+    "PyQt6.QtCore",
+    "PyQt6.QtGui",
+    "PyQt6.QtWidgets",
+    # Explicit GUI modules for robust frozen imports
+    "logo2svg.gui.style",
+    "logo2svg.gui.preview_panel",
+    "logo2svg.gui.layer_panel",
+    "logo2svg.gui.main_window",
+    "logo2svg.gui.source_panel",
+    "logo2svg.gui.settings_dialog",
+]
 
 # PyQt6 needs its DLLs / .pyd files and Qt plugin data explicitly collected
 pyqt6_binaries = collect_dynamic_libs("PyQt6")
