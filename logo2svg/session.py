@@ -329,6 +329,55 @@ class Session:
         del self._layers[index]
         self._traced = False
 
+    def remove_colors(self, indices: list[int]) -> None:
+        """Remove multiple colour layers at once.  Resets tracing."""
+        self._require_layers("remove_colors")
+        indices_sorted = sorted(set(indices))
+        for idx in indices_sorted:
+            if not 0 <= idx < len(self._layers):
+                raise IndexError(f"Layer index {idx} out of range.")
+        self._save_undo(f"Remove {len(indices_sorted)} layers")
+        for idx in reversed(indices_sorted):
+            del self._layers[idx]
+        self._traced = False
+
+    def merge_by_color(self) -> int:
+        """Merge all layers that share the same hex colour.
+
+        For each unique colour, the first (lowest-index) layer with that
+        colour keeps its position and absorbs the masks of all later layers
+        with the same colour.  Those later layers are removed.
+
+        Returns the number of layers that were removed.
+        """
+        self._require_layers("merge_by_color")
+        if len(self._layers) < 2:
+            return 0
+
+        self._save_undo("Merge by color")
+        seen: dict[str, int] = {}  # hex_color -> index of keep layer
+        to_remove: list[int] = []
+        for i, layer in enumerate(self._layers):
+            hc = layer["hex_color"]
+            if hc in seen:
+                keep = seen[hc]
+                self._layers[keep]["mask"] = np.maximum(
+                    self._layers[keep]["mask"], layer["mask"]
+                )
+                to_remove.append(i)
+            else:
+                seen[hc] = i
+
+        if not to_remove:
+            # Nothing to merge — pop the undo snapshot we just saved
+            self._undo_stack.pop()
+            return 0
+
+        for idx in reversed(to_remove):
+            del self._layers[idx]
+        self._traced = False
+        return len(to_remove)
+
     def merge_colors(self, indices: list[int]) -> None:
         """Merge two or more colour layers into one.
 
@@ -357,6 +406,20 @@ class Session:
             del self._layers[idx]
 
         self._traced = False
+
+    def change_colors(self, indices: list[int], new_hex: str) -> None:
+        """Change the colour of multiple layers at once."""
+        self._require_layers("change_colors")
+        indices_sorted = sorted(set(indices))
+        for idx in indices_sorted:
+            if not 0 <= idx < len(self._layers):
+                raise IndexError(f"Layer index {idx} out of range.")
+        self._save_undo(f"Change color of {len(indices_sorted)} layers")
+        r, g, b = hex_to_rgb(new_hex)
+        for idx in indices_sorted:
+            self._layers[idx]["rgb"] = (r, g, b)
+            self._layers[idx]["hex_color"] = rgb_to_hex(r, g, b)
+            self._layers[idx]["color_name"] = nearest_color_name(r, g, b)
 
     def change_color(self, index: int, new_hex: str) -> None:
         """Change the display / output colour of a layer (no re-quantize)."""

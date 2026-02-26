@@ -228,9 +228,131 @@ class MainWindow(QMainWindow):
         # -- Help menu --
         help_menu = mb.addMenu("&Help")
 
+        guide_act = QAction("&Quick Guide\u2026", self)
+        guide_act.setShortcut("F1")
+        guide_act.triggered.connect(self._on_quick_guide)
+        help_menu.addAction(guide_act)
+
+        help_menu.addSeparator()
+
         about_act = QAction("&About QuickLayer", self)
         about_act.triggered.connect(self._on_about)
         help_menu.addAction(about_act)
+
+    def _on_quick_guide(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("QuickLayer \u2014 Quick Guide")
+        dlg.resize(520, 560)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(20, 16, 20, 16)
+
+        from PyQt6.QtWidgets import QTextBrowser
+
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(False)
+        browser.setStyleSheet("font-size: 13px; border: none;")
+        browser.setHtml(
+            "<style>"
+            "h2 { margin-top: 14px; margin-bottom: 4px; }"
+            "table { border-collapse: collapse; width: 100%; margin: 6px 0; }"
+            "th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid #ddd; }"
+            "th { font-weight: 600; }"
+            "code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }"
+            "</style>"
+            "<h2>Keyboard Shortcuts</h2>"
+            "<table>"
+            "<tr><th>Action</th><th>Shortcut</th></tr>"
+            "<tr><td>Open image</td><td><code>Ctrl+O</code></td></tr>"
+            "<tr><td>Import SVG</td><td><code>Ctrl+I</code></td></tr>"
+            "<tr><td>Export SVGs</td><td><code>Ctrl+E</code></td></tr>"
+            "<tr><td>Save project</td><td><code>Ctrl+S</code></td></tr>"
+            "<tr><td>Load project</td><td><code>Ctrl+Shift+O</code></td></tr>"
+            "<tr><td>Undo / Redo</td><td><code>Ctrl+Z</code> / <code>Ctrl+Y</code></td></tr>"
+            "<tr><td>Add text</td><td><code>Ctrl+T</code></td></tr>"
+            "<tr><td>Add border to selection</td><td><code>Ctrl+B</code></td></tr>"
+            "<tr><td>Zoom in / out / reset</td><td><code>Ctrl+=</code> / <code>Ctrl+-</code> / <code>Ctrl+0</code></td></tr>"
+            "<tr><td>Filter layers (focus search)</td><td><code>Ctrl+F</code></td></tr>"
+            "<tr><td>Quick Guide (this dialog)</td><td><code>F1</code></td></tr>"
+            "</table>"
+
+            "<h2>Layer Selection</h2>"
+            "<table>"
+            "<tr><th>Action</th><th>How</th></tr>"
+            "<tr><td>Select one layer</td><td>Click it</td></tr>"
+            "<tr><td>Add/remove from selection</td><td><code>Ctrl+Click</code></td></tr>"
+            "<tr><td>Select a range</td><td><code>Shift+Click</code></td></tr>"
+            "<tr><td>Add range to selection</td><td><code>Ctrl+Shift+Click</code></td></tr>"
+            "<tr><td>Select all</td><td><code>Ctrl+A</code> or <b>Select All</b> button</td></tr>"
+            "<tr><td>Invert selection</td><td><b>Invert</b> button</td></tr>"
+            "<tr><td>Select by color</td><td>Select a layer, then click <b>Select Same Color</b></td></tr>"
+            "<tr><td>Select small objects</td><td>Adjust the <b>Min px</b> slider, click <b>Select Small</b></td></tr>"
+            "<tr><td>Filter by name / color</td><td>Type in the search box (<code>Ctrl+F</code> to focus)</td></tr>"
+            "</table>"
+
+            "<h2>Layer Actions</h2>"
+            "<table>"
+            "<tr><th>Action</th><th>How</th></tr>"
+            "<tr><td>Delete selected</td><td><code>Delete</code> key or <b>Delete Selected</b> button</td></tr>"
+            "<tr><td>Merge selected</td><td><b>Merge Selected</b> button (2+ layers)</td></tr>"
+            "<tr><td>Merge by color</td><td><b>Merge by Color</b> \u2014 consolidates all same-colour layers</td></tr>"
+            "<tr><td>Recolor selected</td><td><b>Recolor Selected</b> \u2014 change colour of all selected layers</td></tr>"
+            "<tr><td>Duplicate</td><td>Select a layer, click <b>Duplicate</b></td></tr>"
+            "<tr><td>Rename</td><td>Double-click the layer name</td></tr>"
+            "<tr><td>Change color</td><td>Click the colour swatch</td></tr>"
+            "<tr><td>Toggle visibility</td><td>Checkbox on each layer</td></tr>"
+            "<tr><td>Reorder</td><td>\u25B2 / \u25BC buttons on each layer</td></tr>"
+            "<tr><td>Sort layers</td><td>Use the <b>Sort</b> dropdown (by color, size, or position)</td></tr>"
+            "<tr><td>Compact view</td><td>Click the <b>\u2630</b> toggle button to halve row height</td></tr>"
+            "</table>"
+
+            "<h2>Right-Click Menu</h2>"
+            "<p>Right-click any layer card for a context menu with:</p>"
+            "<ul>"
+            "<li>Change Color, Select Same Color</li>"
+            "<li>Delete, Rename</li>"
+            "<li>Hide Others (solo this layer), Show All</li>"
+            "<li>Move Up / Move Down</li>"
+            "</ul>"
+
+            "<h2>Preview Canvas</h2>"
+            "<table>"
+            "<tr><th>Action</th><th>How</th></tr>"
+            "<tr><td>Select layer on canvas</td><td>Click on a shape in the preview</td></tr>"
+            "<tr><td>Move layer</td><td>Drag a shape in the preview</td></tr>"
+            "<tr><td>Edit text layer</td><td>Double-click text in the preview</td></tr>"
+            "<tr><td>Zoom</td><td>Scroll wheel, or <code>Ctrl+=</code> / <code>Ctrl+-</code></td></tr>"
+            "</table>"
+
+            "<h2>Tips for Many Objects</h2>"
+            "<p>When using <b>By Object</b> mode, each connected component becomes its own layer. "
+            "This can result in dozens of layers. Here's how to manage them efficiently:</p>"
+            "<ul>"
+            "<li><b>Compact view</b> (\u2630 toggle) halves row height so you can see more layers at once.</li>"
+            "<li><b>Filter</b> by typing in the search box (<code>Ctrl+F</code>) to narrow the list by name or hex colour.</li>"
+            "<li><b>Sort</b> by color to group same-colour objects, or by size to find small fragments.</li>"
+            "<li><b>Select Small</b> + adjust the <b>Min px</b> slider to find and remove tiny noise objects.</li>"
+            "<li><b>Merge by Color</b> recombines same-colour objects into single layers.</li>"
+            "<li>Use <b>Select Same Color</b> to quickly select all pieces of one colour, "
+            "then merge, delete, or recolor them together.</li>"
+            "<li><b>Shift+Click</b> to select contiguous ranges in the list.</li>"
+            "<li><b>Invert</b> selection to keep a few layers and delete the rest.</li>"
+            "<li>The <b>Delete</b> key removes all selected layers at once (with confirmation).</li>"
+            "<li><b>Right-click</b> any layer for quick actions: Hide Others, Select Same Color, etc.</li>"
+            "</ul>"
+        )
+        layout.addWidget(browser)
+
+        close_btn = QPushButton("Close")
+        close_btn.setFixedWidth(80)
+        close_btn.clicked.connect(dlg.accept)
+        from PyQt6.QtWidgets import QHBoxLayout as _HBox
+
+        btn_row = _HBox()
+        btn_row.addStretch()
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        dlg.exec()
 
     def _on_about(self) -> None:
         QMessageBox.about(
@@ -448,13 +570,28 @@ class MainWindow(QMainWindow):
             self._on_color_picker
         )
         self._layer_panel.delete_requested.connect(self._on_delete_layer)
+        self._layer_panel.delete_multiple_requested.connect(
+            self._on_delete_layers
+        )
         self._layer_panel.merge_requested.connect(self._on_merge_layers)
+        self._layer_panel.merge_by_color_requested.connect(
+            self._on_merge_by_color
+        )
+        self._layer_panel.recolor_selected_requested.connect(
+            self._on_recolor_selected
+        )
         self._layer_panel.move_up_requested.connect(self._on_move_layer_up)
         self._layer_panel.move_down_requested.connect(self._on_move_layer_down)
         self._layer_panel.duplicate_requested.connect(self._on_duplicate_layer)
         self._layer_panel.rename_requested.connect(self._on_rename_layer)
         self._layer_panel.selection_changed.connect(
             self._on_layer_selection_changed
+        )
+        self._layer_panel.hide_others_requested.connect(
+            self._on_hide_others
+        )
+        self._layer_panel.show_all_requested.connect(
+            self._on_show_all
         )
         left_splitter.addWidget(self._layer_panel)
 
@@ -869,12 +1006,51 @@ class MainWindow(QMainWindow):
         self._refresh_preview()
         self._update_undo_redo_state()
 
+    def _on_delete_layers(self, indices: list[int]) -> None:
+        """Bulk-delete multiple layers at once."""
+        self._session.remove_colors(indices)
+        self._selected_indices = []
+        self._refresh_layers()
+        self._refresh_preview()
+        self._update_undo_redo_state()
+
     def _on_merge_layers(self, indices: list[int]) -> None:
         self._session.merge_colors(indices)
         self._selected_indices = []
         self._refresh_layers()
         self._refresh_preview()
         self._update_undo_redo_state()
+
+    def _on_merge_by_color(self) -> None:
+        """Merge all layers sharing the same colour into single layers."""
+        removed = self._session.merge_by_color()
+        if removed:
+            self._selected_indices = []
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
+            self._status_label.setText(
+                f"Merged {removed} duplicate-colour layers"
+            )
+        else:
+            self._status_label.setText("No duplicate colours to merge")
+
+    def _on_recolor_selected(self, indices: list[int]) -> None:
+        """Change the colour of all selected layers at once."""
+        layers = self._session.get_layers()
+        if not indices or not layers:
+            return
+        # Use the colour of the first selected layer as the starting colour
+        first_idx = indices[0]
+        if first_idx >= len(layers):
+            return
+        current = QColor(layers[first_idx].hex_color)
+        color = QColorDialog.getColor(current, self, "Pick Color for Selected Layers")
+        if color.isValid():
+            self._session.change_colors(indices, color.name())
+            self._refresh_layers()
+            self._refresh_preview()
+            self._update_undo_redo_state()
 
     def _on_move_layer_up(self, index: int) -> None:
         if self._session.move_layer_up(index):
@@ -899,6 +1075,24 @@ class MainWindow(QMainWindow):
 
     def _on_layer_selection_changed(self, indices: list[int]) -> None:
         self._selected_indices = indices
+        self._refresh_preview()
+
+    def _on_hide_others(self, keep_index: int) -> None:
+        """Hide all layers except the one at *keep_index*."""
+        layers = self._session.get_layers()
+        for layer in layers:
+            self._session.set_layer_visibility(
+                layer.index, layer.index == keep_index
+            )
+        self._refresh_layers()
+        self._refresh_preview()
+
+    def _on_show_all(self) -> None:
+        """Make all layers visible."""
+        layers = self._session.get_layers()
+        for layer in layers:
+            self._session.set_layer_visibility(layer.index, True)
+        self._refresh_layers()
         self._refresh_preview()
 
     # =================================================================
