@@ -1219,12 +1219,28 @@ class Session:
         for layer in self._layers:
             if not layer.get("visible", True):
                 continue
-            mask_bool = layer["mask"] > 0
+            mask_raw = layer["mask"]  # uint8, 0 or 255
+
+            # Anti-alias mask edges: a small Gaussian blur softens the hard
+            # 0→255 transitions at layer boundaries, producing smooth edges
+            # in the preview.  Interior pixels stay fully opaque (255).
+            mask_aa = cv2.GaussianBlur(mask_raw, (3, 3), 0.7)
+
+            nz = mask_aa > 0
+            if not np.any(nz):
+                continue
+
             r, g, b = layer["rgb"]
-            buf[mask_bool, 0] = r
-            buf[mask_bool, 1] = g
-            buf[mask_bool, 2] = b
-            buf[mask_bool, 3] = 255
+            alpha = mask_aa[nz].astype(np.float32) / 255.0
+            inv = 1.0 - alpha
+
+            # Alpha-blend this layer onto the composite buffer
+            buf[nz, 0] = (buf[nz, 0].astype(np.float32) * inv + r * alpha + 0.5).astype(np.uint8)
+            buf[nz, 1] = (buf[nz, 1].astype(np.float32) * inv + g * alpha + 0.5).astype(np.uint8)
+            buf[nz, 2] = (buf[nz, 2].astype(np.float32) * inv + b * alpha + 0.5).astype(np.uint8)
+            buf[nz, 3] = np.minimum(
+                255, buf[nz, 3].astype(np.int16) + mask_aa[nz].astype(np.int16)
+            ).astype(np.uint8)
 
         if selected_indices:
             self._apply_selection_outline(buf, selected_indices)
