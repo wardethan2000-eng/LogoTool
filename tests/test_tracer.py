@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from logo2svg.tracer import find_contours, trace_to_svg_paths, trace_mask_to_svg_paths
+from logo2svg.tracer import trace_mask_to_svg_paths
 
 
 def _make_rectangle_mask(h: int, w: int, x1: int, y1: int, x2: int, y2: int) -> np.ndarray:
@@ -20,14 +20,6 @@ def _make_ring_mask(h: int, w: int, cx: int, cy: int, r_outer: int, r_inner: int
     inner = (x - cx) ** 2 + (y - cy) ** 2 <= r_inner ** 2
     mask[outer & ~inner] = 255
     return mask
-
-
-def test_find_contours_rectangle():
-    """Rectangle mask should produce at least one contour."""
-    mask = _make_rectangle_mask(100, 100, 20, 20, 80, 80)
-    contours, hierarchy = find_contours(mask)
-    assert len(contours) >= 1
-    assert hierarchy is not None
 
 
 def test_trace_rectangle_produces_svg_paths():
@@ -110,41 +102,6 @@ def test_alphamax_controls_corner_detection():
         l_count_smooth = paths_smooth[0].count("L ")
         # Sharp version should have at least as many L commands
         assert l_count_sharp >= l_count_smooth
-
-
-def test_legacy_trace_to_svg_paths():
-    """Legacy trace_to_svg_paths should produce valid SVG paths."""
-    mask = _make_rectangle_mask(100, 100, 20, 20, 80, 80)
-    contours, hierarchy = find_contours(mask)
-    paths = trace_to_svg_paths(contours, hierarchy, tolerance=2.0)
-    assert len(paths) >= 1
-    path = paths[0]
-    assert path.startswith("M")
-    assert "Z" in path
-
-
-def test_legacy_trace_to_svg_paths_with_simplify():
-    """Legacy trace_to_svg_paths accepts a simplify parameter without crashing.
-
-    The *simplify* parameter is accepted for backward compatibility but is
-    ignored (Potrace handles simplification internally).  This test documents
-    that calling with extra positional args doesn't raise.
-    """
-    mask = _make_rectangle_mask(100, 100, 20, 20, 80, 80)
-    contours, hierarchy = find_contours(mask)
-    # Call with explicit simplify= kwarg — should not crash
-    paths = trace_to_svg_paths(contours, hierarchy, tolerance=2.0, simplify=0.5)
-    assert len(paths) >= 1
-    assert paths[0].startswith("M")
-    assert "Z" in paths[0]
-
-
-def test_find_contours_with_smooth():
-    """Smoothing should still produce valid contours."""
-    mask = _make_ring_mask(200, 200, 100, 100, 80, 40)
-    contours, hierarchy = find_contours(mask, smooth=1.4)
-    assert len(contours) >= 1
-    assert hierarchy is not None
 
 
 def test_potrace_circle_is_smooth():

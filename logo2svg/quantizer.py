@@ -32,8 +32,8 @@ def quantize_colors(
     """
     h, w = image.shape[:2]
 
-    # Convert to LAB color space
-    image_lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB).astype(np.float64)
+    # Convert to LAB color space — float32 is sufficient for K-means
+    image_lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB).astype(np.float32)
 
     # Extract foreground pixels
     fg_pixels_lab = image_lab[fg_mask]
@@ -107,7 +107,7 @@ def _auto_detect_k(
         score = _silhouette_score_approx(
             sample,
             cluster_labels,
-            max_points=1200,
+            max_points=5000,
         )
 
         if score > best_score:
@@ -125,7 +125,7 @@ def _kmeans_lab(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Cluster LAB pixels with OpenCV K-means.
 
-    Returns integer labels and LAB centers in float64.
+    Returns integer labels and LAB centers in float32.
     """
     data = np.asarray(pixels_lab, dtype=np.float32)
     if len(data) == 0:
@@ -149,7 +149,7 @@ def _kmeans_lab(
     )
 
     labels = labels.reshape(-1).astype(np.int32)
-    centers = centers.astype(np.float64)
+    centers = centers.astype(np.float32)
     return labels, centers
 
 
@@ -159,7 +159,13 @@ def _silhouette_score_approx(
     *,
     max_points: int = 1200,
 ) -> float:
-    """Approximate silhouette score using bounded random subsampling."""
+    """Fast approximate silhouette score using cluster centroids — O(n·k).
+
+    Instead of building a full O(n²) pairwise distance matrix, we compute
+    each point's intra-cluster distance as its distance to its own centroid,
+    and the inter-cluster distance as the minimum distance to any other
+    centroid.  This is the standard "simplified silhouette" method.
+    """
     if len(points) != len(labels):
         raise ValueError("points and labels must have the same length")
 
@@ -167,7 +173,7 @@ def _silhouette_score_approx(
     if len(unique) < 2:
         return -1.0
 
-    points = np.asarray(points, dtype=np.float64)
+    points = np.asarray(points, dtype=np.float32)
     labels = np.asarray(labels, dtype=np.int32)
 
     if len(points) > max_points:
@@ -176,37 +182,38 @@ def _silhouette_score_approx(
         points = points[idx]
         labels = labels[idx]
 
-    # Pairwise Euclidean distances.
-    dmat = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=2)
+    # Compute centroids for each cluster
+    k = len(unique)
+    centroids = np.empty((k, points.shape[1]), dtype=np.float32)
+    label_to_idx: dict[int, int] = {}
+    for ci, lab in enumerate(unique):
+        mask = labels == lab
+        count = np.count_nonzero(mask)
+        if count == 0:
+            centroids[ci] = 0.0
+        else:
+            centroids[ci] = points[mask].mean(axis=0)
+        label_to_idx[int(lab)] = ci
 
-    silhouettes = np.zeros(len(points), dtype=np.float64)
-    for i in range(len(points)):
-        this_label = labels[i]
+    # Distance from every point to every centroid: (n, k) — O(n·k)
+    diffs = points[:, np.newaxis, :] - centroids[np.newaxis, :, :]
+    dists = np.sqrt(np.sum(diffs * diffs, axis=2))  # avoids creating 3-d intermediate
 
-        same = labels == this_label
-        same_count = int(np.count_nonzero(same))
-        if same_count <= 1:
-            silhouettes[i] = 0.0
-            continue
+    # Map each point to its own centroid index
+    own_idx = np.array([label_to_idx[int(l)] for l in labels], dtype=np.int32)
 
-        # Intra-cluster distance (exclude self).
-        a = (np.sum(dmat[i, same]) - 0.0) / (same_count - 1)
+    n = len(points)
+    a_vals = dists[np.arange(n), own_idx]  # intra-cluster distance
 
-        # Nearest other-cluster mean distance.
-        b = np.inf
-        for other in unique:
-            if other == this_label:
-                continue
-            mask = labels == other
-            if not np.any(mask):
-                continue
-            dist = float(np.mean(dmat[i, mask]))
-            if dist < b:
-                b = dist
+    # For inter-cluster, set own-cluster distance to inf, then take min
+    dists_other = dists.copy()
+    dists_other[np.arange(n), own_idx] = np.inf
+    b_vals = dists_other.min(axis=1)
 
-        denom = max(a, b)
-        silhouettes[i] = 0.0 if denom <= 1e-12 else (b - a) / denom
-
+    denom = np.maximum(a_vals, b_vals)
+    safe = denom > 1e-12
+    silhouettes = np.zeros(n, dtype=np.float32)
+    silhouettes[safe] = (b_vals[safe] - a_vals[safe]) / denom[safe]
     return float(np.mean(silhouettes))
 
 

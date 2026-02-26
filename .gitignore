@@ -1,15 +1,18 @@
 __pycache__/
 *.pyc
+*.pyo
 *.egg-info/
 dist/
 build/
 .pytest_cache/
+.venv/
+*.spec.bak
 
 # Generated output
 *.svg
 *.png
-!logo2svg/**
-debug_output/
+!logo2svg/icons/**
 
 # Re-ignore pycache inside logo2svg (negation above un-ignores it)
 logo2svg/**/__pycache__/
+tests/__pycache__/

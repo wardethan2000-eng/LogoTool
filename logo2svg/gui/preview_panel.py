@@ -235,16 +235,23 @@ class PreviewPanel(QWidget):
         """Display an (H, W, 4) RGBA uint8 numpy array.
 
         Alpha-composited over a light checkerboard to indicate transparency.
+        The checkerboard is cached and only regenerated when the image
+        dimensions change.
         """
         h, w = rgba.shape[:2]
         self._image_h = h
         self._image_w = w
 
-        checker = self._checker_board(h, w)
+        # Reuse cached checkerboard when dimensions haven't changed
+        cached = getattr(self, "_cached_checker", None)
+        if cached is None or cached.shape[0] != h or cached.shape[1] != w:
+            cached = self._checker_board(h, w)
+            self._cached_checker = cached
+
         alpha = rgba[:, :, 3:4].astype(np.float32) / 255.0
         blended = (
             rgba[:, :, :3].astype(np.float32) * alpha
-            + checker.astype(np.float32) * (1.0 - alpha)
+            + cached.astype(np.float32) * (1.0 - alpha)
         )
         blended = np.clip(blended, 0, 255).astype(np.uint8)
 

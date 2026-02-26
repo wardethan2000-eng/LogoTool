@@ -74,59 +74,6 @@ def trace_mask_to_svg_paths(
 
 
 # ------------------------------------------------------------------
-# Legacy wrappers – kept so existing callers / debug scripts still work.
-# ------------------------------------------------------------------
-
-def find_contours(
-    mask: np.ndarray,
-    smooth: float = 0.0,
-) -> tuple[list[np.ndarray], np.ndarray | None]:
-    """Legacy wrapper: find contours with OpenCV.
-
-    Retained for callers that inspect raw contour arrays (debug scripts).
-    The main pipeline no longer uses this – it calls
-    trace_mask_to_svg_paths() directly.
-    """
-    import cv2
-
-    if smooth > 0:
-        blurred = cv2.GaussianBlur(mask, (0, 0), sigmaX=smooth)
-        mask = (blurred > 127).astype(np.uint8) * 255
-
-    contours, hierarchy = cv2.findContours(
-        mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
-    )
-    return list(contours), hierarchy
-
-
-def trace_to_svg_paths(
-    contours: list[np.ndarray],
-    hierarchy: np.ndarray | None,
-    tolerance: float = 2.0,
-    simplify: float | None = None,
-    smooth: float = 0.0,
-) -> list[str]:
-    """Legacy wrapper: convert OpenCV contours to SVG paths.
-
-    Re-rasterises the contours into a mask and traces with potrace.
-    New code should call trace_mask_to_svg_paths() directly.
-    """
-    if not contours or hierarchy is None:
-        return []
-
-    import cv2
-
-    # Re-rasterise contours into a mask and trace with potrace
-    all_pts = np.vstack([c.reshape(-1, 2) for c in contours])
-    h = int(all_pts[:, 1].max()) + 2
-    w = int(all_pts[:, 0].max()) + 2
-    mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.drawContours(mask, contours, -1, 255, cv2.FILLED, hierarchy=hierarchy)
-
-    return trace_mask_to_svg_paths(mask)
-
-
-# ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
 
