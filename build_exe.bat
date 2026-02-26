@@ -9,24 +9,34 @@ cd /d "%~dp0"
 
 echo === QuickLayer GUI builder ===
 
-REM Locate Python — prefer the project venv, fall back to PATH
+REM Locate Python — prefer the project venv, fall back to py launcher, then PATH
 set PYTHON_EXE=
 if exist ".venv\Scripts\python.exe" (
     set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
-) else (
-    where python >nul 2>&1
-    if %ERRORLEVEL%==0 (
-        set PYTHON_EXE=python
-    )
+    goto :found_python
 )
 
-if "%PYTHON_EXE%"=="" (
-    echo ERROR: Python not found.
-    echo   - Create a venv:  python -m venv .venv
-    echo   - Or add Python to your PATH.
-    pause
-    exit /b 1
+REM Try the "py" launcher (standard on Windows Python installs)
+py --version >nul 2>&1
+if %ERRORLEVEL%==0 (
+    set "PYTHON_EXE=py"
+    goto :found_python
 )
+
+REM Try "python" on PATH — verify it actually works (skip Windows Store alias)
+python --version >nul 2>&1
+if %ERRORLEVEL%==0 (
+    set "PYTHON_EXE=python"
+    goto :found_python
+)
+
+echo ERROR: Python not found.
+echo   - Create a venv:  python -m venv .venv
+echo   - Or add Python to your PATH.
+pause
+exit /b 1
+
+:found_python
 
 echo Using Python: %PYTHON_EXE%
 
