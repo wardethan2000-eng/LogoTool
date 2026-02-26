@@ -134,9 +134,11 @@ _EXCLUDE_BINARIES_RE = re.compile(
     r"|Qt6Pdf|Qt6Positioning|Qt6RemoteObjects|Qt6Scxml"
     r"|Qt6Sensors|Qt6Serial|Qt6Spatial|Qt6Sql|Qt6Test"
     r"|Qt6TextToSpeech|Qt6Xml|Qt6HttpServer|Qt6OpenGL"
-    r"|Qt6PrintSupport|Qt6Labs|Qt6Pdf|Qt6Virtual"
+    r"|Qt6PrintSupport|Qt6Labs|Qt6Virtual"
+    r"|Qt6ShaderTools|Qt6StateMachine|Qt6DBus|Qt6Network"
     r"|opengl32sw|d3dcompiler|libGLESv2|libEGL"
-    r"|Qt6Network(?!Auth)"  # keep Qt6Network only if needed
+    # FFmpeg / multimedia codecs — not needed for a widget app
+    r"|avcodec|avformat|avutil|swscale|swresample"
     r")"
 )
 _EXCLUDE_DATAS_RE = re.compile(
@@ -145,7 +147,18 @@ _EXCLUDE_DATAS_RE = re.compile(
     r"|Qt6Web|Qt6Quick|Qt63D|Qt6Charts|Qt6DataVis"
     r"|Qt6Designer|Qt6Help|Qt6Pdf"
     r"|doc[/\\]|examples[/\\]|include[/\\]"
-    r"|\.qm$|LICENSE|NOTICE)"
+    r"|\.qm$|LICENSE|NOTICE"
+    # Qt plugins we don't use
+    r"|[/\\]sqldrivers[/\\]|[/\\]sceneparsers[/\\]"
+    r"|[/\\]assetimporters[/\\]|[/\\]renderers[/\\]"
+    r"|[/\\]qmlls[/\\]|[/\\]qmllint[/\\]"
+    r"|[/\\]multimedia[/\\]|[/\\]tls[/\\]"
+    r"|[/\\]webview[/\\]|[/\\]texttospeech[/\\]"
+    r"|[/\\]position[/\\]|[/\\]geometryloaders[/\\]"
+    r"|[/\\]sensors[/\\]|[/\\]scxmldatamodel[/\\]"
+    r"|[/\\]networkinformation[/\\]|[/\\]generic[/\\]"
+    r"|[/\\]help[/\\]"
+    r")"
 )
 
 filtered_binaries = [b for b in a.binaries if not _EXCLUDE_BINARIES_RE.search(b[0])]

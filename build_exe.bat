@@ -1,14 +1,42 @@
 @echo off
 REM ─────────────────────────────────────────────────────────
-REM  Build a standalone logo2svg GUI executable with PyInstaller
+REM  Build a standalone QuickLayer GUI executable with PyInstaller
 REM ─────────────────────────────────────────────────────────
-echo === logo2svg GUI builder ===
 
-set PYTHON_EXE=python
-if exist ".venv\Scripts\python.exe" set PYTHON_EXE=.venv\Scripts\python.exe
+REM Always work from the directory this batch file lives in,
+REM even when launched via double-click or a shortcut.
+cd /d "%~dp0"
+
+echo === QuickLayer GUI builder ===
+
+REM Locate Python — prefer the project venv, fall back to PATH
+set PYTHON_EXE=
+if exist ".venv\Scripts\python.exe" (
+    set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
+) else (
+    where python >nul 2>&1
+    if %ERRORLEVEL%==0 (
+        set PYTHON_EXE=python
+    )
+)
+
+if "%PYTHON_EXE%"=="" (
+    echo ERROR: Python not found.
+    echo   - Create a venv:  python -m venv .venv
+    echo   - Or add Python to your PATH.
+    pause
+    exit /b 1
+)
+
+echo Using Python: %PYTHON_EXE%
 
 REM 1. Make sure PyInstaller is installed
-%PYTHON_EXE% -m pip install pyinstaller >nul 2>&1
+"%PYTHON_EXE%" -m pip install pyinstaller --quiet
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: Failed to install PyInstaller.
+    pause
+    exit /b 1
+)
 
 REM 2. Remove stale build artifacts
 if exist build rmdir /s /q build
@@ -16,7 +44,13 @@ if exist dist rmdir /s /q dist
 
 REM 3. Run PyInstaller from the spec file
 echo Building executable ...
-%PYTHON_EXE% -m PyInstaller logo2svg_gui.spec --noconfirm --clean
+"%PYTHON_EXE%" -m PyInstaller logo2svg_gui.spec --noconfirm --clean
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo ERROR: PyInstaller build failed. See output above.
+    pause
+    exit /b 1
+)
 
 echo.
 echo Done!  The executable is in:
