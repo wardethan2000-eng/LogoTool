@@ -495,39 +495,50 @@ class PreviewPanel(QWidget):
     def _fit_pixmap(self) -> None:
         if self._current_pixmap is None:
             return
+
+        # Account for HiDPI / display scaling so the preview stays sharp
+        dpr = self.devicePixelRatioF()
+
         margin = 16
         target_w = max(1, self.width() - margin * 2)
         target_h = max(1, self.height() - margin * 2)
 
-        # Apply zoom factor
-        zoomed_w = int(target_w * self._zoom)
-        zoomed_h = int(target_h * self._zoom)
+        # Scale the source image at device-pixel resolution for sharpness
+        zoomed_w = int(target_w * self._zoom * dpr)
+        zoomed_h = int(target_h * self._zoom * dpr)
 
         scaled = self._current_pixmap.scaled(
             QSize(zoomed_w, zoomed_h),
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        scaled.setDevicePixelRatio(dpr)
 
-        # Create a canvas at the original target size for panning
+        # Logical size of the scaled image (for coordinate mapping)
+        scaled_logical_w = scaled.width() / dpr
+        scaled_logical_h = scaled.height() / dpr
+
+        # Create a canvas at device-pixel resolution
         canvas_w = max(1, self.width())
         canvas_h = max(1, self.height())
-        canvas = QPixmap(canvas_w, canvas_h)
+        canvas = QPixmap(int(canvas_w * dpr), int(canvas_h * dpr))
+        canvas.setDevicePixelRatio(dpr)
         canvas.fill(QColor(BG))
 
         painter = QPainter(canvas)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
-        # Center the image + apply pan offset
-        x = int((canvas_w - scaled.width()) / 2 + self._pan_offset.x())
-        y = int((canvas_h - scaled.height()) / 2 + self._pan_offset.y())
-        painter.drawPixmap(x, y, scaled)
+        # Center the image + apply pan offset (all in logical coords)
+        x = (canvas_w - scaled_logical_w) / 2 + self._pan_offset.x()
+        y = (canvas_h - scaled_logical_h) / 2 + self._pan_offset.y()
+        painter.drawPixmap(QPointF(x, y), scaled)
 
-        # Store the rendered image rect for coordinate mapping
+        # Store the rendered image rect for coordinate mapping (logical coords)
         self._img_rect_x = x
         self._img_rect_y = y
-        self._img_rect_w = scaled.width()
-        self._img_rect_h = scaled.height()
+        self._img_rect_w = scaled_logical_w
+        self._img_rect_h = scaled_logical_h
 
         # Draw selection bounding box
         if self._sel_bbox is not None and self._selected_layer >= 0:
@@ -561,16 +572,16 @@ class PreviewPanel(QWidget):
                 # Vertical centre line
                 sx, _ = self._image_to_screen(self._image_w / 2, 0)
                 painter.drawLine(
-                    int(sx), self._img_rect_y,
-                    int(sx), self._img_rect_y + self._img_rect_h,
+                    int(sx), int(self._img_rect_y),
+                    int(sx), int(self._img_rect_y + self._img_rect_h),
                 )
 
             if self._show_h_guide:
                 # Horizontal centre line
                 _, sy = self._image_to_screen(0, self._image_h / 2)
                 painter.drawLine(
-                    self._img_rect_x, int(sy),
-                    self._img_rect_x + self._img_rect_w, int(sy),
+                    int(self._img_rect_x), int(sy),
+                    int(self._img_rect_x + self._img_rect_w), int(sy),
                 )
 
         # Draw zoom indicator

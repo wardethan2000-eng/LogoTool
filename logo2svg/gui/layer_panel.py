@@ -354,6 +354,7 @@ class LayerPanel(QWidget):
     selection_changed = pyqtSignal(list)  # list[int]
     hide_others_requested = pyqtSignal(int)  # keep this index visible
     show_all_requested = pyqtSignal()
+    hide_all_requested = pyqtSignal()
     sort_changed = pyqtSignal(str)  # sort key name
 
     def __init__(self, parent=None):
@@ -637,14 +638,22 @@ class LayerPanel(QWidget):
     def select_all(self) -> None:
         for row in self._rows:
             row.set_selected(True)
+            row.select_cb.blockSignals(True)
+            row.select_cb.setChecked(True)
+            row.select_cb.blockSignals(False)
         self._update_action_buttons()
         self.selection_changed.emit(self.get_selected_indices())
+        self.show_all_requested.emit()
 
     def deselect_all(self) -> None:
         for row in self._rows:
             row.set_selected(False)
+            row.select_cb.blockSignals(True)
+            row.select_cb.setChecked(False)
+            row.select_cb.blockSignals(False)
         self._update_action_buttons()
         self.selection_changed.emit(self.get_selected_indices())
+        self.hide_all_requested.emit()
 
     def invert_selection(self) -> None:
         """Flip the selection state of every row."""

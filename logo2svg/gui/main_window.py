@@ -593,6 +593,9 @@ class MainWindow(QMainWindow):
         self._layer_panel.show_all_requested.connect(
             self._on_show_all
         )
+        self._layer_panel.hide_all_requested.connect(
+            self._on_hide_all
+        )
         left_splitter.addWidget(self._layer_panel)
 
         # Source image gets more space than layers
@@ -1092,6 +1095,14 @@ class MainWindow(QMainWindow):
         layers = self._session.get_layers()
         for layer in layers:
             self._session.set_layer_visibility(layer.index, True)
+        self._refresh_layers()
+        self._refresh_preview()
+
+    def _on_hide_all(self) -> None:
+        """Hide all layers."""
+        layers = self._session.get_layers()
+        for layer in layers:
+            self._session.set_layer_visibility(layer.index, False)
         self._refresh_layers()
         self._refresh_preview()
 
