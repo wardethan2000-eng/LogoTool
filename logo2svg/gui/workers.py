@@ -41,22 +41,34 @@ class _BaseWorker(QThread):
 class LoadWorker(_BaseWorker):
     """Load an image + detect background, optionally remove TM symbols."""
 
-    def __init__(self, session: Session, path: str, bg_color: str | None = None, remove_tm: bool = True, parent=None):
+    def __init__(
+        self,
+        session: Session,
+        path: str,
+        bg_color: str | None = None,
+        remove_tm: bool = True,
+        tm_max_area_pct: float = 1.5,
+        tm_margin_pct: float = 12.0,
+        parent=None,
+    ):
         super().__init__(session, parent)
         self._path = path
         self._bg_color = bg_color
         self._remove_tm = remove_tm
+        self._tm_max_area_pct = tm_max_area_pct
+        self._tm_margin_pct = tm_margin_pct
 
     def _run(self) -> None:
         self.progress.emit("Loading image\u2026")
-        self._session.load(self._path, bg_color=self._bg_color)
-        if self._remove_tm:
-            removed = self._session.remove_tm()
-            if removed:
-                self.progress.emit(f"Removed {removed} TM symbol(s)")
-        else:
-            # Pad to square even when TM removal is skipped
-            self._session.ensure_square()
+        removed = self._session.load_and_prepare(
+            self._path,
+            bg_color=self._bg_color,
+            remove_tm=self._remove_tm,
+            tm_max_area_pct=self._tm_max_area_pct,
+            tm_margin_pct=self._tm_margin_pct,
+        )
+        if removed:
+            self.progress.emit(f"Removed {removed} TM symbol(s)")
         return None
 
 

@@ -218,6 +218,28 @@ class TestTurdsizeFlag:
         svg_files = list(tmp_path.rglob("*.svg"))
         assert len(svg_files) >= 1
 
+    def test_tm_tuning_flags_accepted(self, tmp_path):
+        """The CLI should accept TM tuning flags without error."""
+        logo = tmp_path / "logo.png"
+        _create_simple_logo(logo)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            str(logo), "--colors", "1", "--output-dir", str(tmp_path),
+            "--tm-max-area-pct", "2.5", "--tm-margin-pct", "18",
+        ])
+        assert result.exit_code == 0
+
+    def test_negative_tm_margin_rejected(self, tmp_path):
+        """TM margin must be non-negative."""
+        logo = tmp_path / "logo.png"
+        _create_simple_logo(logo)
+        runner = CliRunner()
+        result = runner.invoke(main, [
+            str(logo), "--tm-margin-pct", "-1",
+        ])
+        assert result.exit_code != 0
+        assert "tm-margin-pct" in result.output
+
 
 # ---------------------------------------------------------------------------
 # Error messages

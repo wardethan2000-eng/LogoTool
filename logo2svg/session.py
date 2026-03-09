@@ -94,6 +94,8 @@ class Session:
     turdsize: int
     scale: float
     width: float | None
+    tm_max_area_pct: float
+    tm_margin_pct: float
 
     # Undo/redo
     _undo_stack: list[_Snapshot]
@@ -109,6 +111,8 @@ class Session:
         turdsize: int = 2,
         scale: float = 1.0,
         width: float | None = None,
+        tm_max_area_pct: float = 1.5,
+        tm_margin_pct: float = 12.0,
     ) -> None:
         self._path = None
         self._image = None
@@ -125,6 +129,8 @@ class Session:
         self.turdsize = turdsize
         self.scale = scale
         self.width = width
+        self.tm_max_area_pct = tm_max_area_pct
+        self.tm_margin_pct = tm_margin_pct
 
         # Undo/redo stacks
         self._undo_stack = []
@@ -191,11 +197,37 @@ class Session:
         self._undo_stack.clear()
         self._redo_stack.clear()
 
+    def load_and_prepare(
+        self,
+        path: str | Path,
+        *,
+        bg_color: str | None = None,
+        remove_tm: bool = True,
+        tm_max_area_pct: float | None = None,
+        tm_margin_pct: float | None = None,
+    ) -> int:
+        """Load an image, apply background detection, and finalize the canvas."""
+        self.load(path, bg_color=bg_color)
+        if remove_tm:
+            return self.remove_tm(
+                max_area_pct=tm_max_area_pct,
+                margin_pct=tm_margin_pct,
+            )
+
+        if tm_max_area_pct is not None:
+            self.tm_max_area_pct = tm_max_area_pct
+        if tm_margin_pct is not None:
+            self.tm_margin_pct = tm_margin_pct
+        self.ensure_square()
+        return 0
+
     def remove_background(
         self,
         bg_color: str | None = None,
         *,
         remove_tm: bool = True,
+        tm_max_area_pct: float | None = None,
+        tm_margin_pct: float | None = None,
     ) -> int:
         """Reload the source image and rebuild the foreground mask.
 
@@ -209,12 +241,13 @@ class Session:
         if self._path is None:
             raise RuntimeError("No image loaded. Call load() first.")
 
-        self.load(self._path, bg_color=bg_color)
-        if remove_tm:
-            return self.remove_tm()
-
-        self.ensure_square()
-        return 0
+        return self.load_and_prepare(
+            self._path,
+            bg_color=bg_color,
+            remove_tm=remove_tm,
+            tm_max_area_pct=tm_max_area_pct,
+            tm_margin_pct=tm_margin_pct,
+        )
 
     # -- preprocessing ----------------------------------------------------
 
@@ -263,7 +296,12 @@ class Session:
 
     # -- stage 2: quantize ------------------------------------------------
 
-    def remove_tm(self) -> int:
+    def remove_tm(
+        self,
+        *,
+        max_area_pct: float | None = None,
+        margin_pct: float | None = None,
+    ) -> int:
         """Remove small TM / (R) symbols from the foreground mask margins.
 
         Should be called after :meth:`load` and before :meth:`quantize`.
@@ -272,7 +310,16 @@ class Session:
         """
         if self._fg_mask is None:
             raise RuntimeError("No image loaded. Call load() first.")
-        self._fg_mask, removed = remove_tm_symbols(self._fg_mask)
+        if max_area_pct is not None:
+            self.tm_max_area_pct = max_area_pct
+        if margin_pct is not None:
+            self.tm_margin_pct = margin_pct
+
+        self._fg_mask, removed = remove_tm_symbols(
+            self._fg_mask,
+            max_area_pct=self.tm_max_area_pct,
+            margin_pct=self.tm_margin_pct,
+        )
         self._pad_to_square()
         return removed
 
@@ -1154,6 +1201,8 @@ class Session:
             "turdsize": self.turdsize,
             "scale": self.scale,
             "width": self.width,
+            "tm_max_area_pct": self.tm_max_area_pct,
+            "tm_margin_pct": self.tm_margin_pct,
             "separation_mode": self._separation_mode,
             "layers": layers_data,
         }
@@ -1191,6 +1240,8 @@ class Session:
         self.turdsize = project.get("turdsize", 2)
         self.scale = project.get("scale", 1.0)
         self.width = project.get("width")
+        self.tm_max_area_pct = project.get("tm_max_area_pct", 1.5)
+        self.tm_margin_pct = project.get("tm_margin_pct", 12.0)
         self._separation_mode = project.get("separation_mode", "color")
 
         # Restore layers

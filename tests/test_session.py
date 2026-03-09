@@ -53,6 +53,15 @@ def _create_corner_mismatch_png(path: Path) -> None:
     Image.fromarray(img, "RGB").save(str(path))
 
 
+def _create_tm_test_png(path: Path) -> None:
+    """White background with a main logo block and a near-edge TM-like blob."""
+    size = 200
+    img = np.full((size, size, 3), 255, dtype=np.uint8)
+    img[20:170, 20:170] = [0, 0, 180]
+    img[180:190, 180:190] = [0, 0, 0]
+    Image.fromarray(img, "RGB").save(str(path))
+
+
 # ---------------------------------------------------------------------------
 # Test: load
 # ---------------------------------------------------------------------------
@@ -102,6 +111,29 @@ class TestLoad:
 
         assert not s.fg_mask[15, 60]
         assert s.fg_mask[60, 60]
+
+    def test_load_and_prepare_respects_tm_thresholds(self, tmp_path):
+        png = tmp_path / "logo.png"
+        _create_tm_test_png(png)
+        s = Session()
+
+        removed = s.load_and_prepare(
+            png,
+            bg_color="#FFFFFF",
+            remove_tm=True,
+            tm_margin_pct=5.0,
+        )
+        assert removed == 0
+        assert s.fg_mask[185, 185]
+
+        removed = s.load_and_prepare(
+            png,
+            bg_color="#FFFFFF",
+            remove_tm=True,
+            tm_margin_pct=15.0,
+        )
+        assert removed == 1
+        assert not s.fg_mask[185, 185]
 
 
 # ---------------------------------------------------------------------------

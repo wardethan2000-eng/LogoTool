@@ -39,6 +39,8 @@ class SettingsDialog(QDialog):
         turdsize: int = 2,
         bg_color: str = "",
         remove_tm: bool = True,
+        tm_max_area_pct: float = 1.5,
+        tm_margin_pct: float = 12.0,
         parent=None,
     ):
         super().__init__(parent)
@@ -123,6 +125,26 @@ class SettingsDialog(QDialog):
         )
         filter_form.addRow("", self._remove_tm)
 
+        self._tm_max_area_pct = QDoubleSpinBox()
+        self._tm_max_area_pct.setRange(0.0, 100.0)
+        self._tm_max_area_pct.setDecimals(2)
+        self._tm_max_area_pct.setSingleStep(0.25)
+        self._tm_max_area_pct.setValue(tm_max_area_pct)
+        self._tm_max_area_pct.setToolTip(
+            "Maximum TM component area as a percentage of total foreground pixels."
+        )
+        filter_form.addRow("TM max area (%):", self._tm_max_area_pct)
+
+        self._tm_margin_pct = QDoubleSpinBox()
+        self._tm_margin_pct.setRange(0.0, 100.0)
+        self._tm_margin_pct.setDecimals(2)
+        self._tm_margin_pct.setSingleStep(0.5)
+        self._tm_margin_pct.setValue(tm_margin_pct)
+        self._tm_margin_pct.setToolTip(
+            "Edge margin width as a percentage of image size for TM detection."
+        )
+        filter_form.addRow("TM margin (%):", self._tm_margin_pct)
+
         layout.addWidget(filter_group)
 
         # ── Background section ──
@@ -183,3 +205,11 @@ class SettingsDialog(QDialog):
     @property
     def remove_tm(self) -> bool:
         return self._remove_tm.isChecked()
+
+    @property
+    def tm_max_area_pct(self) -> float:
+        return self._tm_max_area_pct.value()
+
+    @property
+    def tm_margin_pct(self) -> float:
+        return self._tm_margin_pct.value()

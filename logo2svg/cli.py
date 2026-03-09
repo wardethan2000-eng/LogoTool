@@ -88,6 +88,14 @@ from .pipeline import PipelineConfig, process_batch, process_single
     help="Keep small trademark symbols (TM/®) instead of auto-removing them from margins.",
 )
 @click.option(
+    "--tm-max-area-pct", type=float, default=1.5,
+    help="Maximum TM component area as percent of foreground pixels. Default: 1.5.",
+)
+@click.option(
+    "--tm-margin-pct", type=float, default=12.0,
+    help="Margin width as percent of image size for TM detection. Default: 12.0.",
+)
+@click.option(
     "--enhance-contrast", is_flag=True, default=False,
     help="Apply CLAHE contrast enhancement before quantization.",
 )
@@ -139,6 +147,8 @@ def main(
     report: bool,
     gui: bool,
     keep_tm: bool,
+    tm_max_area_pct: float,
+    tm_margin_pct: float,
     enhance_contrast: bool,
     sharpen: bool,
     denoise: bool,
@@ -183,6 +193,13 @@ def main(
 
     if verbose and quiet:
         click.echo("Error: --verbose and --quiet are mutually exclusive.", err=True)
+        sys.exit(1)
+
+    if tm_max_area_pct < 0:
+        click.echo("Error: --tm-max-area-pct must be non-negative.", err=True)
+        sys.exit(1)
+    if tm_margin_pct < 0:
+        click.echo("Error: --tm-margin-pct must be non-negative.", err=True)
         sys.exit(1)
 
     # Parse target colors
@@ -236,6 +253,8 @@ def main(
         width=width,
         report=report,
         remove_tm=not keep_tm,
+        tm_max_area_pct=tm_max_area_pct,
+        tm_margin_pct=tm_margin_pct,
     )
 
     try:
@@ -259,12 +278,16 @@ def main(
                     turdsize=config.turdsize,
                     scale=config.scale,
                     width=config.width,
+                    tm_max_area_pct=config.tm_max_area_pct,
+                    tm_margin_pct=config.tm_margin_pct,
                 )
-                session.load(path, bg_color=config.bg_color)
-                if config.remove_tm:
-                    session.remove_tm()
-                else:
-                    session.ensure_square()
+                session.load_and_prepare(
+                    path,
+                    bg_color=config.bg_color,
+                    remove_tm=config.remove_tm,
+                    tm_max_area_pct=config.tm_max_area_pct,
+                    tm_margin_pct=config.tm_margin_pct,
+                )
 
                 # Preprocessing
                 if enhance_contrast or sharpen or denoise:
@@ -303,8 +326,9 @@ def main(
 
                 # Report mode
                 if config.report:
-                    for info in session.get_layers():
-                        total_fg = sum(l.pixel_count for l in session.get_layers())
+                    layers = session.get_layers()
+                    total_fg = sum(layer.pixel_count for layer in layers)
+                    for info in layers:
                         pct = 100.0 * info.pixel_count / total_fg if total_fg > 0 else 0
                         click.echo(
                             f"  {info.hex_color}  {info.color_name:<20s}  "

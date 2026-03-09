@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
 import numpy as np
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QImage, QPixmap
@@ -58,17 +59,25 @@ class SourcePanel(QWidget):
         layout.addWidget(self._image_label, stretch=1)
 
         self._current_pixmap: QPixmap | None = None
+        self._source_rgb: np.ndarray | None = None
+        self._source_fg_mask: np.ndarray | None = None
+        self._show_mask_overlay = False
         self._show_empty()
 
     # -- public API -------------------------------------------------------
 
-    def set_image(self, rgb: np.ndarray, path: Path) -> None:
+    def set_image(
+        self,
+        rgb: np.ndarray,
+        path: Path,
+        fg_mask: np.ndarray | None = None,
+    ) -> None:
         """Show the source image scaled to fit the panel."""
+        self._source_rgb = np.ascontiguousarray(rgb)
+        self._source_fg_mask = None if fg_mask is None else np.asarray(fg_mask, dtype=bool)
+        self._update_pixmap()
+
         h, w = rgb.shape[:2]
-        qimg = QImage(
-            rgb.data.tobytes(), w, h, 3 * w, QImage.Format.Format_RGB888
-        )
-        self._current_pixmap = QPixmap.fromImage(qimg)
 
         suffix = path.suffix.upper().lstrip(".")
         size_kb = path.stat().st_size / 1024
@@ -84,6 +93,14 @@ class SourcePanel(QWidget):
         self._image_label.setPixmap(QPixmap())
         self._info_label.setText("")
         self._show_empty()
+        self._source_rgb = None
+        self._source_fg_mask = None
+
+    def set_mask_overlay_visible(self, visible: bool) -> None:
+        """Toggle the foreground-mask overlay on the source image."""
+        self._show_mask_overlay = visible
+        self._update_pixmap()
+        self._fit_pixmap()
 
     # -- events -----------------------------------------------------------
 
@@ -102,6 +119,21 @@ class SourcePanel(QWidget):
         )
         self._image_label.setStyleSheet(f"background-color: {BG};")
 
+    def _update_pixmap(self) -> None:
+        if self._source_rgb is None:
+            self._current_pixmap = None
+            return
+
+        display = self._source_rgb
+        if self._show_mask_overlay and self._source_fg_mask is not None:
+            display = _compose_mask_overlay(self._source_rgb, self._source_fg_mask)
+
+        h, w = display.shape[:2]
+        qimg = QImage(
+            display.data.tobytes(), w, h, 3 * w, QImage.Format.Format_RGB888
+        )
+        self._current_pixmap = QPixmap.fromImage(qimg)
+
     def _fit_pixmap(self) -> None:
         if self._current_pixmap is None:
             return
@@ -115,3 +147,25 @@ class SourcePanel(QWidget):
         )
         self._image_label.setPixmap(scaled)
         self._image_label.setText("")
+
+
+def _compose_mask_overlay(rgb: np.ndarray, fg_mask: np.ndarray) -> np.ndarray:
+    """Return an RGB image with the foreground mask visualized on top."""
+    display = rgb.astype(np.float32).copy()
+    fg_mask = np.asarray(fg_mask, dtype=bool)
+
+    background = ~fg_mask
+    if np.any(background):
+        display[background] = display[background] * 0.35 + np.array([245, 92, 92], dtype=np.float32) * 0.65
+
+    if np.any(fg_mask):
+        display[fg_mask] = display[fg_mask] * 0.9 + np.array([90, 215, 160], dtype=np.float32) * 0.1
+
+    outline = cv2.morphologyEx(
+        (fg_mask.astype(np.uint8) * 255),
+        cv2.MORPH_GRADIENT,
+        np.ones((3, 3), dtype=np.uint8),
+    ) > 0
+    display[outline] = np.array([0, 255, 160], dtype=np.float32)
+
+    return np.clip(display, 0, 255).astype(np.uint8)

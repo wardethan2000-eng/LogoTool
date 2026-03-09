@@ -37,6 +37,9 @@ class PipelineConfig:
     report: bool = False
     # Automatically remove small TM / ® symbols from logo margins
     remove_tm: bool = True
+    # TM removal tuning
+    tm_max_area_pct: float = 1.5
+    tm_margin_pct: float = 12.0
 
 
 def _log(msg: str, config: PipelineConfig, level: int = 1) -> None:
@@ -86,11 +89,19 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
         turdsize=config.turdsize,
         scale=config.scale,
         width=config.width,
+        tm_max_area_pct=config.tm_max_area_pct,
+        tm_margin_pct=config.tm_margin_pct,
     )
 
     # Stage 1: Load image
     _log("  Loading image and detecting background...", config)
-    session.load(input_path, bg_color=config.bg_color)
+    removed = session.load_and_prepare(
+        input_path,
+        bg_color=config.bg_color,
+        remove_tm=config.remove_tm,
+        tm_max_area_pct=config.tm_max_area_pct,
+        tm_margin_pct=config.tm_margin_pct,
+    )
 
     # Auto-denoise JPEG to mitigate compression artefacts before quantization
     if is_jpeg:
@@ -104,13 +115,8 @@ def process_single(input_path: Path, config: PipelineConfig) -> list[Path]:
         _log("  Error: No foreground pixels detected. Try --bg-color to specify background.", config, level=0)
         return []
 
-    # Stage 1b: Remove TM / ® symbols from margins
-    if config.remove_tm:
-        removed = session.remove_tm()
-        if removed:
-            _log(f"  Removed {removed} small trademark symbol(s) from margins", config)
-    else:
-        session.ensure_square()
+    if removed:
+        _log(f"  Removed {removed} small trademark symbol(s) from margins", config)
 
     # Stage 2: Quantize colors
     _log("  Quantizing colors...", config)

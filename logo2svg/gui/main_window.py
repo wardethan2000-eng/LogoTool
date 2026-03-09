@@ -101,6 +101,8 @@ class MainWindow(QMainWindow):
         self._session = Session()
         self._bg_color: str = ""
         self._remove_tm: bool = True
+        self._tm_max_area_pct: float = 1.5
+        self._tm_margin_pct: float = 12.0
         self._worker = None  # keep worker alive while running
         self._selected_indices: list[int] = []
 
@@ -426,6 +428,13 @@ class MainWindow(QMainWindow):
         remove_bg_btn.clicked.connect(self._on_remove_background)
         hbar.addWidget(remove_bg_btn)
 
+        self._mask_overlay_btn = QPushButton("Mask Overlay")
+        self._mask_overlay_btn.setCheckable(True)
+        self._mask_overlay_btn.setFixedHeight(32)
+        self._mask_overlay_btn.setToolTip("Show the detected foreground mask over the source image")
+        self._mask_overlay_btn.toggled.connect(self._on_mask_overlay_toggled)
+        hbar.addWidget(self._mask_overlay_btn)
+
         hbar.addSpacing(12)
         hbar.addWidget(self._vsep())
         hbar.addSpacing(8)
@@ -688,6 +697,8 @@ class MainWindow(QMainWindow):
             path,
             bg_color=self._bg_color or None,
             remove_tm=self._remove_tm,
+            tm_max_area_pct=self._tm_max_area_pct,
+            tm_margin_pct=self._tm_margin_pct,
         )
         worker.progress.connect(self._on_progress)
         worker.finished.connect(self._on_load_done)
@@ -757,6 +768,8 @@ class MainWindow(QMainWindow):
             turdsize=self._session.turdsize,
             bg_color=self._bg_color,
             remove_tm=self._remove_tm,
+            tm_max_area_pct=self._tm_max_area_pct,
+            tm_margin_pct=self._tm_margin_pct,
             parent=self,
         )
         if dlg.exec() != SettingsDialog.DialogCode.Accepted:
@@ -783,6 +796,16 @@ class MainWindow(QMainWindow):
         if dlg.remove_tm != self._remove_tm:
             self._remove_tm = dlg.remove_tm
             if self._session.path:
+                self.open_file(str(self._session.path))
+                return
+        if dlg.tm_max_area_pct != self._tm_max_area_pct:
+            self._tm_max_area_pct = dlg.tm_max_area_pct
+            if self._session.path and self._remove_tm:
+                self.open_file(str(self._session.path))
+                return
+        if dlg.tm_margin_pct != self._tm_margin_pct:
+            self._tm_margin_pct = dlg.tm_margin_pct
+            if self._session.path and self._remove_tm:
                 self.open_file(str(self._session.path))
                 return
 
@@ -1003,6 +1026,8 @@ class MainWindow(QMainWindow):
         dlg = _BackgroundDialog(
             bg_color=self._bg_color,
             remove_tm=self._remove_tm,
+            tm_max_area_pct=self._tm_max_area_pct,
+            tm_margin_pct=self._tm_margin_pct,
             parent=self,
         )
         if dlg.exec() != QDialog.DialogCode.Accepted:
@@ -1010,6 +1035,8 @@ class MainWindow(QMainWindow):
 
         self._bg_color = dlg.bg_color
         self._remove_tm = dlg.remove_tm
+        self._tm_max_area_pct = dlg.tm_max_area_pct
+        self._tm_margin_pct = dlg.tm_margin_pct
 
         self._set_busy(True, "Removing background\u2026")
         worker = LoadWorker(
@@ -1017,6 +1044,8 @@ class MainWindow(QMainWindow):
             str(self._session.path),
             bg_color=self._bg_color or None,
             remove_tm=self._remove_tm,
+            tm_max_area_pct=self._tm_max_area_pct,
+            tm_margin_pct=self._tm_margin_pct,
         )
         worker.progress.connect(self._on_progress)
         worker.finished.connect(self._on_load_done)
@@ -1249,7 +1278,7 @@ class MainWindow(QMainWindow):
             try:
                 self._session.load_project(path)
                 self._source_panel.set_image(
-                    self._session.image, self._session.path
+                    self._session.image, self._session.path, self._session.fg_mask
                 )
                 self._refresh_layers()
                 self._refresh_preview()
@@ -1282,7 +1311,7 @@ class MainWindow(QMainWindow):
         self._set_busy(False, "Loaded")
         self._selected_indices = []
         self._source_panel.set_image(
-            self._session.image, self._session.path
+            self._session.image, self._session.path, self._session.fg_mask
         )
         h, w = self._session.image_size
         self._status_label.setText(
@@ -1322,7 +1351,7 @@ class MainWindow(QMainWindow):
     def _on_preprocess_done(self, report) -> None:
         self._set_busy(False, "Preprocessed")
         self._source_panel.set_image(
-            self._session.image, self._session.path
+            self._session.image, self._session.path, self._session.fg_mask
         )
         # Re-quantize with the enhanced image
         self._run_quantize()
@@ -1378,6 +1407,9 @@ class MainWindow(QMainWindow):
         """Update both the status label and the preview overlay."""
         self._status_label.setText(message)
         self._preview.update_processing_message(message)
+
+    def _on_mask_overlay_toggled(self, checked: bool) -> None:
+        self._source_panel.set_mask_overlay_visible(checked)
 
     def _set_busy(self, busy: bool, status: str = "") -> None:
         if busy:
@@ -1473,7 +1505,14 @@ class _TextDialog(QDialog):
 class _BackgroundDialog(QDialog):
     """Dialog for re-running background detection on the current image."""
 
-    def __init__(self, bg_color: str = "", remove_tm: bool = True, parent=None):
+    def __init__(
+        self,
+        bg_color: str = "",
+        remove_tm: bool = True,
+        tm_max_area_pct: float = 1.5,
+        tm_margin_pct: float = 12.0,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Remove Background")
         self.setMinimumWidth(400)
@@ -1501,6 +1540,20 @@ class _BackgroundDialog(QDialog):
         self._remove_tm.setChecked(remove_tm)
         form.addRow("", self._remove_tm)
 
+        self._tm_max_area_pct = QDoubleSpinBox()
+        self._tm_max_area_pct.setRange(0.0, 100.0)
+        self._tm_max_area_pct.setDecimals(2)
+        self._tm_max_area_pct.setSingleStep(0.25)
+        self._tm_max_area_pct.setValue(tm_max_area_pct)
+        form.addRow("TM max area (%):", self._tm_max_area_pct)
+
+        self._tm_margin_pct = QDoubleSpinBox()
+        self._tm_margin_pct.setRange(0.0, 100.0)
+        self._tm_margin_pct.setDecimals(2)
+        self._tm_margin_pct.setSingleStep(0.5)
+        self._tm_margin_pct.setValue(tm_margin_pct)
+        form.addRow("TM margin (%):", self._tm_margin_pct)
+
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
@@ -1518,6 +1571,14 @@ class _BackgroundDialog(QDialog):
     @property
     def remove_tm(self) -> bool:
         return self._remove_tm.isChecked()
+
+    @property
+    def tm_max_area_pct(self) -> float:
+        return self._tm_max_area_pct.value()
+
+    @property
+    def tm_margin_pct(self) -> float:
+        return self._tm_margin_pct.value()
 
 
 class _OutlineDialog(QDialog):
