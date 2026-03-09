@@ -191,6 +191,31 @@ class Session:
         self._undo_stack.clear()
         self._redo_stack.clear()
 
+    def remove_background(
+        self,
+        bg_color: str | None = None,
+        *,
+        remove_tm: bool = True,
+    ) -> int:
+        """Reload the source image and rebuild the foreground mask.
+
+        This restores the explicit background-removal workflow for interactive
+        callers. The source image is reloaded from disk so background detection
+        runs against the original pixels rather than already-processed state.
+
+        Returns:
+            Number of TM-like components removed after reloading.
+        """
+        if self._path is None:
+            raise RuntimeError("No image loaded. Call load() first.")
+
+        self.load(self._path, bg_color=bg_color)
+        if remove_tm:
+            return self.remove_tm()
+
+        self.ensure_square()
+        return 0
+
     # -- preprocessing ----------------------------------------------------
 
     def run_preprocessing(

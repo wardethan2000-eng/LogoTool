@@ -207,6 +207,10 @@ class MainWindow(QMainWindow):
         preprocess_act.triggered.connect(self._on_preprocess)
         tools_menu.addAction(preprocess_act)
 
+        remove_bg_act = QAction("Remove &Background\u2026", self)
+        remove_bg_act.triggered.connect(self._on_remove_background)
+        tools_menu.addAction(remove_bg_act)
+
         # -- View menu --
         view_menu = mb.addMenu("&View")
 
@@ -415,6 +419,12 @@ class MainWindow(QMainWindow):
         export_btn.setFixedHeight(32)
         export_btn.clicked.connect(self._on_export)
         hbar.addWidget(export_btn)
+
+        remove_bg_btn = QPushButton("Remove Background")
+        remove_bg_btn.setToolTip("Rebuild the foreground mask from the original image")
+        remove_bg_btn.setFixedHeight(32)
+        remove_bg_btn.clicked.connect(self._on_remove_background)
+        hbar.addWidget(remove_bg_btn)
 
         hbar.addSpacing(12)
         hbar.addWidget(self._vsep())
@@ -982,6 +992,37 @@ class MainWindow(QMainWindow):
         worker.error.connect(self._on_worker_error)
         self._start_worker(worker)
 
+    def _on_remove_background(self) -> None:
+        """Reload the current image and re-apply background detection."""
+        if not self._session.is_loaded or self._session.path is None:
+            QMessageBox.information(
+                self, "Remove Background", "Open an image first."
+            )
+            return
+
+        dlg = _BackgroundDialog(
+            bg_color=self._bg_color,
+            remove_tm=self._remove_tm,
+            parent=self,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._bg_color = dlg.bg_color
+        self._remove_tm = dlg.remove_tm
+
+        self._set_busy(True, "Removing background\u2026")
+        worker = LoadWorker(
+            self._session,
+            str(self._session.path),
+            bg_color=self._bg_color or None,
+            remove_tm=self._remove_tm,
+        )
+        worker.progress.connect(self._on_progress)
+        worker.finished.connect(self._on_load_done)
+        worker.error.connect(self._on_worker_error)
+        self._start_worker(worker)
+
     # =================================================================
     #  Layer-panel signal handlers
     # =================================================================
@@ -1427,6 +1468,56 @@ class _TextDialog(QDialog):
     @property
     def color_value(self) -> str:
         return self._color_hex
+
+
+class _BackgroundDialog(QDialog):
+    """Dialog for re-running background detection on the current image."""
+
+    def __init__(self, bg_color: str = "", remove_tm: bool = True, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Remove Background")
+        self.setMinimumWidth(400)
+        self.setModal(True)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(20, 20, 20, 16)
+
+        description = QLabel(
+            "Reload the original image and rebuild the foreground mask. "
+            "Leave the color blank to use automatic detection."
+        )
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self._bg_color = QLineEdit(bg_color)
+        self._bg_color.setPlaceholderText("#FFFFFF or leave blank for auto")
+        form.addRow("Background color:", self._bg_color)
+
+        self._remove_tm = QCheckBox("Remove TM / ® symbols from margins")
+        self._remove_tm.setChecked(remove_tm)
+        form.addRow("", self._remove_tm)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    @property
+    def bg_color(self) -> str:
+        return self._bg_color.text().strip()
+
+    @property
+    def remove_tm(self) -> bool:
+        return self._remove_tm.isChecked()
 
 
 class _OutlineDialog(QDialog):

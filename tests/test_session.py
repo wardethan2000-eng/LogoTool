@@ -41,6 +41,18 @@ def _create_three_color_png(path: Path) -> None:
     Image.fromarray(img, "RGB").save(str(path))
 
 
+def _create_corner_mismatch_png(path: Path) -> None:
+    """Green background with conflicting corner colours to defeat auto-detect."""
+    size = 120
+    img = np.full((size, size, 3), [0, 128, 0], dtype=np.uint8)
+    img[30:90, 30:90] = [220, 20, 20]
+    img[:10, :10] = [0, 0, 255]
+    img[:10, -10:] = [255, 255, 0]
+    img[-10:, :10] = [255, 0, 255]
+    img[-10:, -10:] = [0, 255, 255]
+    Image.fromarray(img, "RGB").save(str(path))
+
+
 # ---------------------------------------------------------------------------
 # Test: load
 # ---------------------------------------------------------------------------
@@ -78,6 +90,18 @@ class TestLoad:
         total = s.fg_mask.size
         # White bg removed → less than all pixels are foreground
         assert fg < total
+
+    def test_remove_background_reapplies_mask(self, tmp_path):
+        png = tmp_path / "logo.png"
+        _create_corner_mismatch_png(png)
+        s = Session()
+        s.load(png)
+        assert s.fg_mask[15, 60]
+
+        s.remove_background(bg_color="#008000", remove_tm=False)
+
+        assert not s.fg_mask[15, 60]
+        assert s.fg_mask[60, 60]
 
 
 # ---------------------------------------------------------------------------

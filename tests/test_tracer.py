@@ -1,8 +1,9 @@
 """Tests for the tracer module (potrace-based)."""
 
 import numpy as np
+from potrace import Bitmap, POTRACE_TURNPOLICY_MINORITY
 
-from logo2svg.tracer import trace_mask_to_svg_paths
+from logo2svg.tracer import _curves_to_svg_paths, trace_mask_to_svg_paths
 
 
 def _make_rectangle_mask(h: int, w: int, x1: int, y1: int, x2: int, y2: int) -> np.ndarray:
@@ -19,6 +20,15 @@ def _make_ring_mask(h: int, w: int, cx: int, cy: int, r_outer: int, r_inner: int
     outer = (x - cx) ** 2 + (y - cy) ** 2 <= r_outer ** 2
     inner = (x - cx) ** 2 + (y - cy) ** 2 <= r_inner ** 2
     mask[outer & ~inner] = 255
+    return mask
+
+
+def _make_staircase_mask(size: int = 96) -> np.ndarray:
+    """Create a diagonal staircase silhouette that exposes jagged tracing."""
+    mask = np.zeros((size, size), dtype=np.uint8)
+    for y in range(16, size - 16):
+        x_end = 16 + (y - 16)
+        mask[y, 16:min(x_end + 1, size - 16)] = 255
     return mask
 
 
@@ -115,3 +125,23 @@ def test_potrace_circle_is_smooth():
     # Should NOT have many line segments (circles are smooth)
     l_count = paths[0].count(" L ")
     assert l_count <= c_count, f"More lines ({l_count}) than curves ({c_count}) for a circle"
+
+
+def test_trace_smoothing_reduces_staircase_line_segments():
+    """Pre-trace smoothing should reduce jagged line segments on diagonal edges."""
+    mask = _make_staircase_mask()
+
+    bm = Bitmap(mask > 127)
+    bm.invert()
+    raw_plist = bm.trace(
+        turdsize=2,
+        turnpolicy=POTRACE_TURNPOLICY_MINORITY,
+        alphamax=1.0,
+        opticurve=True,
+        opttolerance=0.2,
+    )
+    raw_path = _curves_to_svg_paths(raw_plist)[0]
+    smoothed_path = trace_mask_to_svg_paths(mask)[0]
+
+    assert smoothed_path.count("L ") <= raw_path.count("L ")
+    assert smoothed_path != raw_path

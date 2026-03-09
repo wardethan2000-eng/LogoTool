@@ -74,12 +74,18 @@ def separate_layers(
 def _morphological_cleanup(mask: np.ndarray, kernel_size: int = 3) -> np.ndarray:
     """Apply morphological close to fill tiny holes in the mask.
 
-    Uses only MORPH_CLOSE (dilate then erode) with a 3×3 kernel.  The
+    Uses only MORPH_CLOSE (dilate then erode) with a small elliptical kernel.
+    The rounded kernel avoids reintroducing square corners while still closing
+    1-2px pinholes and gaps between neighboring pixels.
+
+    The
     previous close+open approach included an erode step (MORPH_OPEN) that
     destroyed thin features — eating 10-15 % of narrow strokes.  Speckle
     removal is handled separately by _filter_small_components.
     """
-    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (kernel_size, kernel_size)
+    )
     # Close: dilate then erode — fills small 1-2px gaps within the mask
     closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
     return closed
