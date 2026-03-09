@@ -1100,6 +1100,9 @@ class Session:
         out = Path(output_dir)
         height, width = self._image.shape[:2]
         base_name = self._path.stem if self._path else "output"
+        export_layers = [
+            layer for layer in self._layers if layer.get("visible", True)
+        ]
 
         effective_scale = self.scale
         if self.width is not None:
@@ -1107,7 +1110,7 @@ class Session:
 
         output_files = write_svg_files(
             base_name,
-            self._layers,
+                export_layers,
             (height, width),
             out,
             combined,

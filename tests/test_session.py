@@ -294,6 +294,24 @@ class TestExport:
         combined = [f for f in files if "combined" in f.name]
         assert len(combined) == 1
 
+    def test_export_excludes_hidden_layers(self, tmp_path):
+        png = tmp_path / "logo.png"
+        _create_two_color_png(png)
+        out = tmp_path / "out"
+        s = Session()
+        s.load(png)
+        s.quantize(n_colors=2)
+
+        hidden_color = s.get_layers()[0].hex_color
+        s.set_layer_visibility(0, False)
+
+        files = s.export(out, combined=True)
+        assert len(files) == 2  # 1 visible layer + 1 combined
+
+        combined = [f for f in files if "combined" in f.name][0]
+        content = combined.read_text()
+        assert f'fill="{hidden_color}"' not in content
+
     def test_export_auto_traces(self, tmp_path):
         """export() should auto-trace if not already traced."""
         png = tmp_path / "logo.png"
